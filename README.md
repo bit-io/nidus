@@ -1,6 +1,6 @@
 # nidus
 
-**Rozbudowana biblioteka diagnostyczna dla H# i ekosystemu `bytes`, inspirowana [miette](https://github.com/zkat/miette) (Rust) — ale z większą liczbą stylów renderowania, motywami kolorystycznymi, lokalizacją komunikatów i łańcuchami przyczyn.**
+**Rozbudowana biblioteka diagnostyczna dla H# i ekosystemu `bit`, inspirowana [miette](https://github.com/zkat/miette) (Rust) — ale z większą liczbą stylów renderowania, motywami kolorystycznymi, lokalizacją komunikatów i łańcuchami przyczyn.**
 
 100% H#. Zero `extern`. Zero FFI. Tylko standardowa biblioteka H# (`strings`, `fmt`, `term`, `env`, `test`).
 
@@ -21,36 +21,36 @@
 
 ## Instalacja
 
-Przez `bytes` (menedżer pakietów H#):
+Przez `bit` (menedżer pakietów H#, następca `bytes`):
 
 ```bash
-bytes add nidus
+bit add nidus
 ```
 
-Ręcznie, jako zależność Git w `Bytes.hk` Twojego projektu:
+Ręcznie, jako zależność w `Bit.hk` Twojego projektu:
 
 ```
-[deps]
--> nidus => git
+[dependencies]
+-> nidus => github twoje-konto/nidus
 ```
 
 Następnie w kodzie:
 
 ```hsharp
-use "github.com/twoje-konto/nidus" from "nidus"
+use "bit -> nidus" from "nidus"
 ```
 
 > Uwaga dot. importu: skoro `nidus` jest importowany pod aliasem, **typy** biblioteki
 > (np. `Diagnostic`, `Theme`, `Config`, `Style`, `Severity`, `Label`, `Span`, `Words`,
 > `Charset`, `Palette`) również wymagają prefiksu, np. `nidus::Diagnostic`,
 > `nidus::Style::Graphical` — dokładnie tak samo jak dla zwykłych funkcji
-> (`config::Project` w `bytes`). Wewnątrz samej biblioteki (plik `src/lib.h#`)
+> (`config::Project` w `bit`). Wewnątrz samej biblioteki (plik `src/lib.h#`)
 > wszystko jest oczywiście bez prefiksu.
 
 ## Szybki start
 
 ```hsharp
-use "github.com/twoje-konto/nidus" from "nidus"
+use "bit -> nidus" from "nidus"
 
 fn main() is
     let src: string = "let y = x / 0\nwrite(y)\n"
@@ -246,10 +246,10 @@ end
 ## Testy
 
 Testy jednostkowe są dołączone bezpośrednio w `src/lib.h#` (zgodnie z tym,
-jak `bytes test` wyszukuje `#[test]` — również wewnątrz `src/`):
+jak `bit test` wyszukuje `#[test]` — również wewnątrz `src/`):
 
 ```bash
-bytes test
+bit test
 ```
 
 ## Ograniczenia i uczciwe zastrzeżenia
@@ -261,7 +261,7 @@ bytes test
   względem `miette` (brak pełnego algorytmu unikania kolizji przy bardzo
   gęsto upakowanych etykietach) — w praktyce dla 2-4 etykiet na linię
   wygląda identycznie.
-- Kod nie był uruchamiany przez `h# check` / `bytes build` w tym
+- Kod nie był uruchamiany przez `h# check` / `bit build` w tym
   środowisku (brak lokalnego toolchaina LLVM 21 + Rust). Składnia została
   ręcznie zweryfikowana zdanie po zdaniu względem README H# v0.9 oraz
   wzorców z `std/*.h#` i `examples/showcase.h#` z repozytorium H#-Sharp.
