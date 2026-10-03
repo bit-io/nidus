@@ -1,4 +1,4 @@
-use "bytes -> nidus" from "nidus"
+use "bit -> nidus" from "nidus"
 
 fn main() is
     let mut d: nidus::Diagnostic = nidus::warning("funkcja jest przestarzała")
