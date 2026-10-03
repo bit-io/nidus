@@ -1,4 +1,4 @@
-use "bytes -> nidus" from "nidus"
+use "bit -> nidus" from "nidus"
 
 fn main() is
     let root_cause: nidus::Diagnostic = nidus::error("nie znaleziono pliku")
