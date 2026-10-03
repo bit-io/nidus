@@ -2,13 +2,28 @@
 -> name        => nidus
 -> version     => 0.1.0
 -> description => Rozbudowana biblioteka diagnostyczna dla H#, inspirowana miette — czytelne, konfigurowalne raporty bledow w wielu stylach (graphical, ascii, narratable, minimal, json, markdown, github)
--> author      => Bytes Developers
+-> authors     => ["Bit Developers"]
 -> license     => MIT
+-> lang        => h#
+
+[layout]
+-> src       => src
+-> lib-entry => src/lib.h#
 
 [build]
--> lang   => h#
--> entry  => src/lib.h#
--> output => build/libnidus
--> emit   => lib
+-> link   => static
+-> target => h#
 
-[deps]
+[lib]
+-> output => hlib
+
+[default-build]
+-> profile => release
+-> emit    => hlib
+
+[dependencies]
+
+[commands]
+-> check
+--> run => h# check src/lib.h#
+--> description => Sprawdz typy biblioteki
