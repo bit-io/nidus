@@ -1,0 +1,98 @@
+use "std -> strings" from "str"
+
+mod nidus_diagnostic
+mod nidus_graphical
+mod nidus_machine
+mod nidus_plain
+mod nidus_severity
+mod nidus_style
+mod nidus_text
+mod nidus_theme
+
+pub fn render(d: nidus_diagnostic::Diagnostic, cfg: nidus_style::Config) -> string is
+    let st: int = nidus_style::index(cfg.style)
+    if st == 0 is return nidus_graphical::render_graphical(d, cfg.theme) end
+    if st == 1 is return nidus_graphical::render_graphical(d, cfg.theme.with_charset(nidus_theme::charset_ascii())) end
+    if st == 2 is return nidus_plain::render_narratable(d, cfg.theme) end
+    if st == 3 is return nidus_plain::render_minimal(d, cfg.theme) end
+    if st == 4 is return nidus_machine::render_json(d) end
+    if st == 5 is return nidus_machine::render_markdown(d) end
+    return nidus_machine::render_github(d)
+end
+
+;; Wypisuje diagnostykę na stdout, z automatycznie dobraną konfiguracją.
+pub fn report(d: nidus_diagnostic::Diagnostic) is
+    write(render(d, nidus_style::config_default()))
+end
+
+;; Wypisuje diagnostykę z jawnie podaną konfiguracją (styl + motyw).
+pub fn report_with(d: nidus_diagnostic::Diagnostic, cfg: nidus_style::Config) is
+    write(render(d, cfg))
+end
+
+pub fn exit_code_for(sev: nidus_severity::Severity) -> int is
+    if nidus_severity::index(sev) == 0 is return 1 end
+    return 0
+end
+
+;; Wypisuje diagnostykę i kończy proces (kod 1 dla błędu, 0 dla reszty).
+pub fn die(d: nidus_diagnostic::Diagnostic) is
+    report(d)
+    exit(exit_code_for(d.severity))
+end
+
+pub fn die_with(d: nidus_diagnostic::Diagnostic, cfg: nidus_style::Config) is
+    report_with(d, cfg)
+    exit(exit_code_for(d.severity))
+end
+
+pub fn summarize_with(ds: [nidus_diagnostic::Diagnostic], pal: nidus_theme::Palette) -> string is
+    let mut errors:   int = 0
+    let mut warnings: int = 0
+    let mut advices:  int = 0
+    for d in ds is
+        let si: int = nidus_severity::index(d.severity)
+        if si == 0 is errors += 1 end
+        if si == 1 is warnings += 1 end
+        if si == 2 is advices += 1 end
+    end
+
+    let mut parts: [string] = []
+    if errors > 0 is
+        parts.push(nidus_theme::paint(pal.error_c, to_string(errors) + " " + nidus_text::pluralize(errors, "błąd", "błędy", "błędów"), pal))
+    end
+    if warnings > 0 is
+        parts.push(nidus_theme::paint(pal.warning_c, to_string(warnings) + " " + nidus_text::pluralize(warnings, "ostrzeżenie", "ostrzeżenia", "ostrzeżeń"), pal))
+    end
+    if advices > 0 is
+        parts.push(nidus_theme::paint(pal.advice_c, to_string(advices) + " " + nidus_text::pluralize(advices, "porada", "porady", "porad"), pal))
+    end
+    if parts.len() == 0 is return "Brak zgłoszonych diagnostyk." end
+    return str::join(parts, nidus_theme::paint(pal.border_c, ", ", pal))
+end
+
+;; Zwraca zdanie podsumowujące listę diagnostyk, np.
+;; "2 błędy, 1 ostrzeżenie" (czysty tekst, bez kolorów).
+pub fn summarize(ds: [nidus_diagnostic::Diagnostic]) -> string is
+    return summarize_with(ds, nidus_theme::palette_mono())
+end
+
+;; To samo, ale pokolorowane paletą z motywu (błędy czerwone, ostrzeżenia
+;; żółte, porady cyjan). Dla motywów mono daje czysty tekst.
+pub fn summarize_colored(ds: [nidus_diagnostic::Diagnostic], theme: nidus_theme::Theme) -> string is
+    return summarize_with(ds, theme.palette)
+end
+
+;; Wypisuje wszystkie diagnostyki, a na końcu jedno zbiorcze podsumowanie
+;; (kolorowe w stylach przeznaczonych dla człowieka).
+pub fn print_all(ds: [nidus_diagnostic::Diagnostic], cfg: nidus_style::Config) is
+    for d in ds is
+        write(render(d, cfg))
+    end
+    write("")
+    if nidus_style::style_is_human(cfg.style) is
+        write(summarize_colored(ds, cfg.theme))
+    else is
+        write(summarize(ds))
+    end
+end
