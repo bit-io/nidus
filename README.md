@@ -31,7 +31,7 @@ Ręcznie, jako zależność w `Bit.hk` Twojego projektu:
 
 ```
 [dependencies]
--> nidus => newest
+-> nidus => github twoje-konto/nidus
 ```
 
 Następnie w kodzie:
@@ -40,12 +40,41 @@ Następnie w kodzie:
 use "bit -> nidus" from "nidus"
 ```
 
-> Uwaga dot. importu: skoro `nidus` jest importowany pod aliasem, **typy** biblioteki
-> (np. `Diagnostic`, `Theme`, `Config`, `Style`, `Severity`, `Label`, `Span`, `Words`,
-> `Charset`, `Palette`) również wymagają prefiksu, np. `nidus::Diagnostic`,
-> `nidus::Style::Graphical` — dokładnie tak samo jak dla zwykłych funkcji
-> (`config::Project` w `bit`). Wewnątrz samej biblioteki (plik `src/lib.h#`)
-> wszystko jest oczywiście bez prefiksu.
+> **Uwaga dot. importu (0.3.0):** biblioteka jest podzielona na moduły (`src/nidus_*.h#`).
+> **Funkcje** wołasz pod krótkimi nazwami (`nidus::error`, `nidus::report`,
+> `nidus::theme_dark`, ...). **Typy** mają ścieżkę modułu:
+>
+> | Typ | Ścieżka |
+> |---|---|
+> | `Diagnostic` | `nidus::diagnostic::Diagnostic` |
+> | `Config`, `Style` | `nidus::style::Config`, `nidus::style::Style` |
+> | `Theme`, `Palette`, `Charset`, `Words` | `nidus::theme::Theme`, ... |
+> | `Label`, `Span` | `nidus::span::Label`, `nidus::span::Span` |
+> | `Severity` | `nidus::severity::Severity` |
+> | `Outcome<T>` | `nidus::outcome::Outcome<T>` |
+>
+> Warianty `Style` tworzysz funkcjami: `nidus::style::graphical()`, `ascii()`, `narratable()`,
+> `minimal()`, `json()`, `markdown()`, `github_actions()` (oraz `nidus::style::all()`).
+> Alias importu musi być `nidus` (`use "bit -> nidus" from "nidus"`), bo nazwy modułów
+> mają stały prefiks `nidus_`.
+
+## Struktura źródeł
+
+| Plik | Zawartość |
+|---|---|
+| `src/lib.h#` | wejście biblioteki: `VERSION`, `about()` i wrappery API |
+| `src/nidus_severity.h#` | `Severity` |
+| `src/nidus_text.h#` | linia/kolumna, zawijanie, odmiana, escapowanie |
+| `src/nidus_span.h#` | `Span`, `Label` |
+| `src/nidus_theme.h#` | `Charset`, `Palette`, `Words`, `Theme`, motywy, `paint` |
+| `src/nidus_diagnostic.h#` | `Diagnostic` + builder |
+| `src/nidus_style.h#` | `Style`, `Config`, autodetekcja stylu i koloru |
+| `src/nidus_graphical.h#` | widok Graphical / Ascii |
+| `src/nidus_plain.h#` | Narratable, Minimal |
+| `src/nidus_machine.h#` | Json, Markdown, GitHub Actions |
+| `src/nidus_report.h#` | `render`, `report`, `die`, podsumowania |
+| `src/nidus_outcome.h#` | `Outcome<T>` |
+| `src/nidus_tests.h#` | testy jednostkowe |
 
 ## Szybki start
 
@@ -55,7 +84,7 @@ use "bit -> nidus" from "nidus"
 fn main() is
     let src: string = "let y = x / 0\nwrite(y)\n"
 
-    let mut d: nidus::Diagnostic = nidus::error("dzielenie przez zero")
+    let mut d: nidus::diagnostic::Diagnostic = nidus::error("dzielenie przez zero")
     d = d.with_code("nidus::eval::div_zero")
     d = d.with_source("main.ns", src)
     d = d.with_label(nidus::primary_label(8, 5, "tu nie można dzielić przez zero"))
@@ -84,7 +113,7 @@ Rdzeń biblioteki. Budowany fluent-builderem (każda metoda `with_*` zwraca
 zmodyfikowaną wartość, więc łańcuchujesz przypisania):
 
 ```hsharp
-let mut d: nidus::Diagnostic = nidus::error("wiadomość")
+let mut d: nidus::diagnostic::Diagnostic = nidus::error("wiadomość")
 d = d.with_code("moj::kod::bledu")     ;; identyfikator, np. do wyszukiwania w dokumentacji
 d = d.with_help("sugestia naprawy")
 d = d.with_note("dodatkowy kontekst")
@@ -146,8 +175,8 @@ liniach — styl `Graphical`/`Ascii` narysuje je wszystkie, w tym efekt
 Wybór stylu i motywu:
 
 ```hsharp
-let cfg: nidus::Config = nidus::config_default()   ;; autodetekcja (patrz niżej)
-let cfg2: nidus::Config = nidus::config_with(nidus::Style::Json, nidus::theme_mono())
+let cfg: nidus::style::Config = nidus::config_default()   ;; autodetekcja (patrz niżej)
+let cfg2: nidus::style::Config = nidus::config_with(nidus::style::json(), nidus::theme_mono())
 nidus::report_with(d, cfg2)
 ```
 
@@ -210,7 +239,7 @@ Gotowe motywy (`Theme = Charset + Palette + Words + ustawienia layoutu`):
 Własny motyw ze składników:
 
 ```hsharp
-let mut t: nidus::Theme = nidus::theme_dark()
+let mut t: nidus::theme::Theme = nidus::theme_dark()
 t = t.with_context(3)              ;; 3 linie kontekstu zamiast domyślnej 1
 t = t.with_wrap(60)                ;; węższe zawijanie help/note
 t = t.with_words(nidus::words_pl()) ;; lub własny nidus::Words { ... }
@@ -220,19 +249,19 @@ t = t.with_charset(moj_zestaw_znakow)
 
 Ponieważ `Palette` to zwykłe pola typu `string` z kodami ANSI, możesz
 zbudować dowolny kolor (w tym truecolor) — zobacz `theme_retro()` w
-`src/lib.h#` jako wzór. Pola palety: `error_c`, `warning_c`, `advice_c`, `help_c`,
+`src/nidus_theme.h#` jako wzór. Pola palety: `error_c`, `warning_c`, `advice_c`, `help_c`,
 `note_c`, `link_c`, `dim_c`, `bold_c`, `reset` oraz (od 0.2.0) `border_c`, `lineno_c`,
 `path_c`, `pos_c`, `code_c`, `secondary_c`. Puste pole = brak koloru dla tego elementu.
 
-> **Zmiana niekompatybilna w 0.2.0:** literał `nidus::Palette { ... }` wymaga teraz
+> **Zmiana niekompatybilna w 0.2.0:** literał `nidus::theme::Palette { ... }` wymaga teraz
 > wszystkich 15 pól. Jeśli budujesz paletę ręcznie, zacznij od gotowej i podmień pola
 > (`let mut p = ...; p.error_c = "..."`) albo dopisz sześć nowych.
 
 ## Łańcuchy przyczyn
 
 ```hsharp
-let cause: nidus::Diagnostic = nidus::error("plik nie istnieje").with_code("nidus::io::not_found")
-let mut top: nidus::Diagnostic = nidus::error("nie udało się wczytać konfiguracji")
+let cause: nidus::diagnostic::Diagnostic = nidus::error("plik nie istnieje").with_code("nidus::io::not_found")
+let mut top: nidus::diagnostic::Diagnostic = nidus::error("nie udało się wczytać konfiguracji")
 top = top.with_related(cause)
 nidus::report(top)
 ```
@@ -243,7 +272,7 @@ Każdy styl renderuje `related` rekurencyjnie (z wcięciem), analogicznie do
 ## Wiele diagnostyk naraz
 
 ```hsharp
-let ds: [nidus::Diagnostic] = [blad1, blad2, ostrzezenie1]
+let ds: [nidus::diagnostic::Diagnostic] = [blad1, blad2, ostrzezenie1]
 nidus::print_all(ds, nidus::config_default())
 ;; wypisuje każdą diagnostykę, a na końcu np. "2 błędy, 1 ostrzeżenie"
 ```
@@ -265,24 +294,24 @@ Lekki odpowiednik `Result<T, Diagnostic>`, do użycia we własnych funkcjach
 korzystać z operatora `?`):
 
 ```hsharp
-enum Outcome<T> is
+enum Outcome<T> is   ;; src/nidus_outcome.h#
     Success(T)
     Failure(Diagnostic)
 end
 ```
 
 ```hsharp
-fn wczytaj_port(s: string) -> nidus::Outcome<int> is
+fn wczytaj_port(s: string) -> nidus::outcome::Outcome<int> is
     if !s.is_numeric() is
-        return nidus::Outcome::Failure(nidus::error("`" + s + "` nie jest liczbą").with_code("nidus::config::bad_port"))
+        return nidus::outcome::Outcome::Failure(nidus::error("`" + s + "` nie jest liczbą").with_code("nidus::config::bad_port"))
     end
-    return nidus::Outcome::Success(conv::str_to_int(s))
+    return nidus::outcome::Outcome::Success(conv::str_to_int(s))
 end
 ```
 
 ## Testy
 
-Testy jednostkowe są dołączone bezpośrednio w `src/lib.h#` (zgodnie z tym,
+Testy jednostkowe są w `src/nidus_tests.h#` (zgodnie z tym,
 jak `bit test` wyszukuje `#[test]` — również wewnątrz `src/`):
 
 ```bash
