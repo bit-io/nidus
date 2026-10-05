@@ -3,7 +3,7 @@ use "bit -> nidus" from "nidus"
 fn main() is
     let src: string = "let y = x / 0\nwrite(y)\n"
 
-    let mut d: nidus::Diagnostic = nidus::error("dzielenie przez zero")
+    let mut d: nidus::diagnostic::Diagnostic = nidus::error("dzielenie przez zero")
     d = d.with_code("nidus::eval::div_zero")
     d = d.with_source("main.ns", src)
     d = d.with_label(nidus::primary_label(8, 5, "tu nie można dzielić przez zero"))
