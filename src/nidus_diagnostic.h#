@@ -1,0 +1,107 @@
+mod nidus_severity
+mod nidus_span
+
+pub struct Diagnostic is
+    pub message:     string
+    pub code:        string       ;; np. "nidus::eval::div_zero" ("" jeśli brak)
+    pub severity:    nidus_severity::Severity
+    pub help:        string       ;; sugestia naprawy ("" jeśli brak)
+    pub note:        string       ;; dodatkowy kontekst ("" jeśli brak)
+    pub url:         string       ;; link do dokumentacji ("" jeśli brak)
+    pub labels:      [nidus_span::Label]      ;; podświetlenia we fragmencie źródła
+    pub source_name: string       ;; nazwa pliku wyświetlana w nagłówku
+    pub source_code: string       ;; pełna treść źródła ("" -> brak fragmentu)
+    pub related:     [Diagnostic] ;; łańcuch powiązanych/przyczynowych błędów
+end
+
+pub fn empty_diagnostic(message: string) -> Diagnostic is
+    return Diagnostic {
+        message: message, code: "", severity: nidus_severity::error_level(),
+        help: "", note: "", url: "", labels: [],
+        source_name: "", source_code: "", related: []
+    }
+end
+
+;; ── Konstruktory ─────────────────────────────────────────────────────────
+pub fn diagnostic(message: string) -> Diagnostic is
+    return empty_diagnostic(message)
+end
+
+pub fn error(message: string) -> Diagnostic is
+    return empty_diagnostic(message)
+end
+
+pub fn warning(message: string) -> Diagnostic is
+    let mut d: Diagnostic = empty_diagnostic(message)
+    d.severity = nidus_severity::warning_level()
+    return d
+end
+
+pub fn advice(message: string) -> Diagnostic is
+    let mut d: Diagnostic = empty_diagnostic(message)
+    d.severity = nidus_severity::advice_level()
+    return d
+end
+
+;; ── Budowniczy (fluent builder) ──────────────────────────────────────────
+impl Diagnostic is
+    fn with_code(self, code: string) -> Diagnostic is
+        self.code = code
+        return self
+    end
+
+    fn with_severity(self, sev: nidus_severity::Severity) -> Diagnostic is
+        self.severity = sev
+        return self
+    end
+
+    fn as_error(self) -> Diagnostic is
+        self.severity = nidus_severity::error_level()
+        return self
+    end
+
+    fn as_warning(self) -> Diagnostic is
+        self.severity = nidus_severity::warning_level()
+        return self
+    end
+
+    fn as_advice(self) -> Diagnostic is
+        self.severity = nidus_severity::advice_level()
+        return self
+    end
+
+    fn with_help(self, help_text: string) -> Diagnostic is
+        self.help = help_text
+        return self
+    end
+
+    fn with_note(self, note_text: string) -> Diagnostic is
+        self.note = note_text
+        return self
+    end
+
+    fn with_url(self, url_text: string) -> Diagnostic is
+        self.url = url_text
+        return self
+    end
+
+    fn with_source(self, name: string, code: string) -> Diagnostic is
+        self.source_name = name
+        self.source_code = code
+        return self
+    end
+
+    fn with_label(self, l: nidus_span::Label) -> Diagnostic is
+        self.labels.push(l)
+        return self
+    end
+
+    fn with_related(self, other: Diagnostic) -> Diagnostic is
+        self.related.push(other)
+        return self
+    end
+
+    fn is_error(self) -> bool is
+        return nidus_severity::index(self.severity) == 0
+    end
+end
