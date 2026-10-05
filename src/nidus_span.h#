@@ -1,0 +1,52 @@
+pub struct Span is
+    pub offset: int   ;; przesunięcie bajtowe od początku źródła (0-based)
+    pub len:    int   ;; długość zakresu w bajtach (minimum efektywnie 1)
+end
+
+pub fn span(offset: int, len: int) -> Span is
+    return Span { offset: offset, len: len }
+end
+
+;; Zakres wskazujący pojedynczy punkt (np. brakujący znak).
+pub fn point(offset: int) -> Span is
+    return Span { offset: offset, len: 1 }
+end
+
+impl Span is
+    fn end_offset(self) -> int is
+        return self.offset + self.len
+    end
+
+    fn contains(self, o: int) -> bool is
+        return o >= self.offset && o < self.offset + self.len
+    end
+end
+
+;; Etykieta — pojedyncze podświetlenie fragmentu kodu z opcjonalnym opisem.
+;; `primary`  = true  -> główna etykieta (kolor błędu, pogrubiona)
+;; `primary`  = false -> etykieta pomocnicza (kolor przygaszony)
+pub struct Label is
+    pub sp:      Span
+    pub text:    string
+    pub primary: bool
+end
+
+pub fn label(offset: int, len: int, text: string) -> Label is
+    return Label { sp: span(offset, len), text: text, primary: false }
+end
+
+pub fn label_at(offset: int, text: string) -> Label is
+    return Label { sp: point(offset), text: text, primary: false }
+end
+
+pub fn primary_label(offset: int, len: int, text: string) -> Label is
+    return Label { sp: span(offset, len), text: text, primary: true }
+end
+
+pub fn primary_label_at(offset: int, text: string) -> Label is
+    return Label { sp: point(offset), text: text, primary: true }
+end
+
+pub fn empty_label() -> Label is
+    return Label { sp: Span { offset: 0, len: 0 }, text: "", primary: false }
+end
