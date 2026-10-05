@@ -4,7 +4,7 @@ use "std -> term"    from "term"
 use "std -> env"     from "env"
 use "std -> test"    from "test"
 
-pub let VERSION: string = "0.1.0"
+pub let VERSION: string = "0.2.0"
 
 pub fn about() -> string is
     return "nidus v" + VERSION + " -- rozbudowana biblioteka diagnostyczna dla H#, inspirowana miette"
@@ -342,15 +342,22 @@ fn charset_ascii() -> Charset is
 end
 
 struct Palette is
-    pub error_c:   string
-    pub warning_c: string
-    pub advice_c:  string
-    pub help_c:    string
-    pub note_c:    string
-    pub link_c:    string
-    pub dim_c:     string
-    pub bold_c:    string
-    pub reset:     string
+    pub error_c:     string
+    pub warning_c:   string
+    pub advice_c:    string
+    pub help_c:      string
+    pub note_c:      string
+    pub link_c:      string
+    pub dim_c:       string
+    pub bold_c:      string
+    pub reset:       string
+    ;; --- dodane w 0.2.0: pełne kolorowanie widoku ---
+    pub border_c:    string   ;; ramka: ╭─[ │ · ╰────
+    pub lineno_c:    string   ;; numery linii (linie z etykietami)
+    pub path_c:      string   ;; nazwa pliku w nagłówku fragmentu
+    pub pos_c:       string   ;; linia:kolumna
+    pub code_c:      string   ;; kod błędu oraz `fragmenty w backtickach`
+    pub secondary_c: string   ;; etykiety pomocnicze (nie-główne)
 end
 
 fn palette_dark() -> Palette is
@@ -363,7 +370,13 @@ fn palette_dark() -> Palette is
         link_c:    "\x1b[4;94m",
         dim_c:     "\x1b[2m",
         bold_c:    "\x1b[1m",
-        reset:     "\x1b[0m"
+        reset:     "\x1b[0m",
+        border_c:    "\x1b[90m",
+        lineno_c:    "\x1b[96m",
+        path_c:      "\x1b[1;97m",
+        pos_c:       "\x1b[93m",
+        code_c:      "\x1b[95m",
+        secondary_c: "\x1b[1;94m"
     }
 end
 
@@ -377,14 +390,21 @@ fn palette_light() -> Palette is
         link_c:    "\x1b[4;34m",
         dim_c:     "\x1b[90m",
         bold_c:    "\x1b[1m",
-        reset:     "\x1b[0m"
+        reset:     "\x1b[0m",
+        border_c:    "\x1b[90m",
+        lineno_c:    "\x1b[34m",
+        path_c:      "\x1b[1;30m",
+        pos_c:       "\x1b[33m",
+        code_c:      "\x1b[35m",
+        secondary_c: "\x1b[1;34m"
     }
 end
 
 fn palette_mono() -> Palette is
     return Palette {
         error_c: "", warning_c: "", advice_c: "", help_c: "", note_c: "",
-        link_c: "", dim_c: "", bold_c: "", reset: ""
+        link_c: "", dim_c: "", bold_c: "", reset: "",
+        border_c: "", lineno_c: "", path_c: "", pos_c: "", code_c: "", secondary_c: ""
     }
 end
 
@@ -400,7 +420,13 @@ fn palette_retro() -> Palette is
         link_c:    "\x1b[4m\x1b[38;2;180;140;255m",
         dim_c:     "\x1b[38;2;120;120;140m",
         bold_c:    "\x1b[1m",
-        reset:     "\x1b[0m"
+        reset:     "\x1b[0m",
+        border_c:    "\x1b[38;2;90;90;125m",
+        lineno_c:    "\x1b[38;2;120;220;255m",
+        path_c:      "\x1b[1m\x1b[38;2;255;255;255m",
+        pos_c:       "\x1b[38;2;255;180;60m",
+        code_c:      "\x1b[38;2;255;120;220m",
+        secondary_c: "\x1b[1m\x1b[38;2;120;220;255m"
     }
 end
 
@@ -551,12 +577,28 @@ end
 pub fn detect_unicode_support() -> bool is
     let lang: string   = str::to_upper(env::get_or("LANG", ""))
     let lc_all: string = str::to_upper(env::get_or("LC_ALL", ""))
+    let lc_ctype: string = str::to_upper(env::get_or("LC_CTYPE", ""))
     return lang.contains("UTF-8") || lang.contains("UTF8") ||
-           lc_all.contains("UTF-8") || lc_all.contains("UTF8")
+           lc_all.contains("UTF-8") || lc_all.contains("UTF8") ||
+           lc_ctype.contains("UTF-8") || lc_ctype.contains("UTF8")
 end
 
+fn env_flag_set(name: string) -> bool is
+    let v: string = env::get(name)
+    return v != "" && v != "0"
+end
+
+;; Kolejność decyzji (od najsilniejszej):
+;;  1. NIDUS_COLOR=always|never   -> jawne nadpisanie (np. dla procesu potomnego z pipe)
+;;  2. NO_COLOR                   -> bez kolorów (https://no-color.org)
+;;  3. CLICOLOR_FORCE / FORCE_COLOR -> kolory wymuszone
+;;  4. terminal (TERM, nie "dumb") -> kolory
 pub fn detect_color_support() -> bool is
+    let ov: string = str::to_upper(env::get("NIDUS_COLOR"))
+    if ov == "ALWAYS" || ov == "1" || ov == "TRUE" || ov == "ON"  is return true end
+    if ov == "NEVER"  || ov == "0" || ov == "FALSE" || ov == "OFF" is return false end
     if env::get("NO_COLOR") != "" is return false end
+    if env_flag_set("CLICOLOR_FORCE") || env_flag_set("FORCE_COLOR") is return true end
     if !term::is_tty() is return false end
     if env::get("TERM") == "dumb" is return false end
     return true
@@ -580,7 +622,8 @@ pub fn auto_style() -> Style is
     if forced == "markdown"   is return Style::Markdown end
     if forced == "github"     is return Style::GithubActions end
 
-    if !term::is_tty() is return Style::Minimal end
+    ;; bez terminala i bez wymuszonego koloru -> zwięzły Minimal (logi/grep)
+    if !term::is_tty() && !detect_color_support() is return Style::Minimal end
     if detect_unicode_support() is return Style::Graphical end
     return Style::Ascii
 end
@@ -607,6 +650,15 @@ pub fn config_with(style: Style, theme: Theme) -> Config is
     return Config { style: style, theme: theme }
 end
 
+;; Zawsze kolorowo: pełny widok graficzny z kolorami niezależnie od autodetekcji
+;; (unikod, jeśli terminal go deklaruje; w przeciwnym razie ASCII).
+pub fn config_colored() -> Config is
+    if detect_unicode_support() is
+        return Config { style: Style::Graphical, theme: theme_dark() }
+    end
+    return Config { style: Style::Ascii, theme: theme_ascii() }
+end
+
 impl Config is
     fn with_style(self, s: Style) -> Config is
         self.style = s
@@ -626,6 +678,32 @@ end
 fn capitalize(s: string) -> string is
     if s.len() == 0 is return s end
     return str::to_upper(s[0..1]) + s[1..s.len()]
+end
+
+;; Owija tekst kolorem (nic nie robi, gdy kolor pusty — motywy mono).
+fn paint(color: string, text: string, pal: Palette) -> string is
+    if color == "" is return text end
+    return color + text + pal.reset
+end
+
+;; Koloruje fragmenty w `backtickach` (razem z backtickami). Po zamknięciu
+;; fragmentu przywraca styl `after` (np. pogrubienie wiadomości).
+;; Niedomknięty backtick -> tekst bez zmian.
+fn colorize_ticks(text: string, color: string, after: string, pal: Palette) -> string is
+    if color == "" is return text end
+    let parts: [string] = str::split(text, "`")
+    if parts.len() % 2 == 0 is return text end
+    let mut out: string = ""
+    let mut i: int = 0
+    while i < parts.len() is
+        if i % 2 == 1 is
+            out = out + color + "`" + parts[i] + "`" + pal.reset + after
+        else is
+            out = out + parts[i]
+        end
+        i += 1
+    end
+    return out
 end
 
 ;; Zawija `text` do `width` znaków, dokleja `prefix` do pierwszej linii
@@ -741,7 +819,29 @@ end
 
 fn label_color(primary: bool, sev_color: string, pal: Palette) -> string is
     if primary is return sev_color end
-    return pal.dim_c
+    return pal.secondary_c
+end
+
+;; Linia kodu z podświetlonymi (kolorem etykiety) fragmentami wskazanymi
+;; przez etykiety — dzięki temu błędne miejsce widać już w samym kodzie.
+;; Bez kolorów zwraca dokładnie `text`.
+fn highlight_line(text: string, placed: [Placed], sev_color: string, pal: Palette) -> string is
+    let n: int = text.len()
+    let mut out: string = ""
+    let mut cursor: int = 1
+    for p in placed is
+        let mut a: int = p.col_start
+        if a < cursor is a = cursor end
+        let mut b: int = p.col_end
+        if b > n + 1 is b = n + 1 end
+        if a <= n && b > a is
+            if a > cursor is out = out + text[cursor - 1..a - 1] end
+            out = out + paint(label_color(p.primary, sev_color, pal), text[a - 1..b - 1], pal)
+            cursor = b
+        end
+    end
+    if cursor <= n is out = out + text[cursor - 1..n] end
+    return out
 end
 
 fn render_snippet(d: Diagnostic, theme: Theme) -> string is
@@ -774,25 +874,39 @@ fn render_snippet(d: Diagnostic, theme: Theme) -> string is
     let head_line: int = line_of_offset(src, d.labels[0].sp.offset)
     let head_col:  int = col_of_offset(src, d.labels[0].sp.offset)
 
-    let mut out: string = ""
-    out = out + fmt::repeat(" ", gw + 1) + pal.dim_c + cs.top_left + cs.h_bar + cs.h_bar + pal.reset + "["
-    if d.source_name != "" is out = out + d.source_name + ":" end
-    out = out + to_string(head_line) + ":" + to_string(head_col) + "]\n"
+    ;; przerywana pionowa kreska w gutterze oraz kropka w wierszach adnotacji
+    let gutter_dot: string = fmt::repeat(" ", gw + 1) + paint(pal.border_c, cs.dot, pal) + " "
+
+    ;; ╭──[plik:linia:kolumna]
+    let mut out: string = fmt::repeat(" ", gw + 1) + paint(pal.border_c, cs.top_left + cs.h_bar + cs.h_bar + "[", pal)
+    if d.source_name != "" is
+        out = out + paint(pal.path_c, d.source_name, pal) + paint(pal.border_c, ":", pal)
+    end
+    out = out + paint(pal.pos_c, to_string(head_line) + ":" + to_string(head_col), pal)
+    out = out + paint(pal.border_c, "]", pal) + "\n"
 
     let mut line_no: int = min_line
     while line_no <= max_line is
         let text: string = get_line_text(src, line_no)
+        let placed: [Placed] = labels_for_line(src, d.labels, line_no, text.len())
 
-        if theme.show_line_numbers is
-            out = out + pal.dim_c + fmt::pad_left(to_string(line_no), gw) + " " + cs.v_bar + pal.reset + " " + text + "\n"
-        else is
-            out = out + fmt::repeat(" ", gw) + " " + cs.v_bar + " " + text + "\n"
+        ;; numer linii: wyraźny dla linii z etykietami, przygaszony dla kontekstu
+        let mut num_color: string = pal.border_c
+        let mut shown: string = text
+        if placed.len() > 0 is
+            num_color = pal.lineno_c
+            shown = highlight_line(text, placed, sev_color, pal)
         end
 
-        let placed: [Placed] = labels_for_line(src, d.labels, line_no, text.len())
+        if theme.show_line_numbers is
+            out = out + paint(num_color, fmt::pad_left(to_string(line_no), gw), pal) + " " + paint(pal.border_c, cs.v_bar, pal) + " " + shown + "\n"
+        else is
+            out = out + fmt::repeat(" ", gw) + " " + paint(pal.border_c, cs.v_bar, pal) + " " + shown + "\n"
+        end
+
         if placed.len() > 0 is
             ;; wiersz podkreśleń
-            let mut underline: string = fmt::repeat(" ", gw + 1) + pal.dim_c + cs.dot + pal.reset + " "
+            let mut underline: string = gutter_dot
             let mut cursor: int = 1
             for p in placed is
                 if p.col_start > cursor is
@@ -801,7 +915,7 @@ fn render_snippet(d: Diagnostic, theme: Theme) -> string is
                 end
                 let seg_len: int = p.col_end - p.col_start
                 let color:   string = label_color(p.primary, sev_color, pal)
-                underline = underline + color + fmt::repeat(cs.underline, seg_len) + pal.reset
+                underline = underline + paint(color, fmt::repeat(cs.underline, seg_len), pal)
                 cursor = p.col_end
             end
             out = out + underline + "\n"
@@ -812,7 +926,7 @@ fn render_snippet(d: Diagnostic, theme: Theme) -> string is
             while idx >= 0 is
                 let p: Placed = placed[idx]
                 if p.text != "" is
-                    let mut row: string = fmt::repeat(" ", gw + 1) + pal.dim_c + cs.dot + pal.reset + " "
+                    let mut row: string = gutter_dot
                     let mut c2: int = 1
                     let mut j: int = 0
                     while j < idx is
@@ -822,7 +936,7 @@ fn render_snippet(d: Diagnostic, theme: Theme) -> string is
                                 row = row + fmt::repeat(" ", other.col_start - c2)
                                 c2 = other.col_start
                             end
-                            row = row + label_color(other.primary, sev_color, pal) + cs.vbar_connector + pal.reset
+                            row = row + paint(label_color(other.primary, sev_color, pal), cs.vbar_connector, pal)
                             c2 = c2 + 1
                         end
                         j += 1
@@ -830,7 +944,7 @@ fn render_snippet(d: Diagnostic, theme: Theme) -> string is
                     if p.col_start > c2 is
                         row = row + fmt::repeat(" ", p.col_start - c2)
                     end
-                    row = row + label_color(p.primary, sev_color, pal) + cs.connector + " " + p.text + pal.reset
+                    row = row + paint(label_color(p.primary, sev_color, pal), cs.connector + " " + p.text, pal)
                     out = out + row + "\n"
                 end
                 idx = idx - 1
@@ -840,7 +954,7 @@ fn render_snippet(d: Diagnostic, theme: Theme) -> string is
         line_no = line_no + 1
     end
 
-    out = out + fmt::repeat(" ", gw + 1) + pal.dim_c + cs.bottom_left + fmt::repeat(cs.h_bar, 4) + pal.reset + "\n"
+    out = out + fmt::repeat(" ", gw + 1) + paint(pal.border_c, cs.bottom_left + fmt::repeat(cs.h_bar, 4), pal) + "\n"
     return out
 end
 
@@ -852,33 +966,37 @@ fn render_graphical(d: Diagnostic, theme: Theme) -> string is
     let icon:      string = severity_icon(d.severity, cs)
     let sev_word:  string = sev_word_for(d.severity, w)
 
-    let mut out: string = "\n  " + sev_color + icon + " " + sev_word
+    ;;   × error[kod::bledu]: wiadomość z `fragmentem`
+    let mut out: string = "\n  " + paint(sev_color, icon + " " + sev_word, pal)
     if d.code != "" is
-        out = out + pal.reset + pal.dim_c + "[" + d.code + "]" + pal.reset + sev_color
+        out = out + paint(pal.border_c, "[", pal) + paint(pal.code_c, d.code, pal) + paint(pal.border_c, "]", pal)
     end
-    out = out + ": " + pal.bold_c + d.message + pal.reset + "\n"
+    out = out + paint(sev_color, ":", pal) + " "
+    out = out + pal.bold_c + colorize_ticks(d.message, pal.code_c, pal.bold_c, pal) + pal.reset + "\n"
 
     if d.source_code != "" && d.labels.len() > 0 is
         out = out + render_snippet(d, theme) + "\n"
     elsif d.labels.len() > 0 is
         for l in d.labels is
-            out = out + "    " + pal.dim_c + "-> " + pal.reset + l.text + "\n"
+            out = out + "    " + paint(label_color(l.primary, sev_color, pal), "->", pal) + " " + colorize_ticks(l.text, pal.code_c, "", pal) + "\n"
         end
         out = out + "\n"
     end
 
     if d.help != "" is
-        out = out + wrap_with_prefix(d.help, "  " + pal.help_c + w.help + ": " + pal.reset, "        ", theme.wrap_width) + "\n"
+        let hp: string = "  " + paint(pal.help_c, w.help + ":", pal) + " "
+        out = out + colorize_ticks(wrap_with_prefix(d.help, hp, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
     end
     if d.note != "" is
-        out = out + wrap_with_prefix(d.note, "  " + pal.note_c + w.note + ": " + pal.reset, "        ", theme.wrap_width) + "\n"
+        let np: string = "  " + paint(pal.note_c, w.note + ":", pal) + " "
+        out = out + colorize_ticks(wrap_with_prefix(d.note, np, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
     end
     if d.url != "" is
-        out = out + "   " + pal.link_c + w.see + ": " + d.url + pal.reset + "\n"
+        out = out + "   " + paint(pal.note_c, w.see + ":", pal) + " " + paint(pal.link_c, d.url, pal) + "\n"
     end
 
     if d.related.len() > 0 is
-        out = out + "  " + pal.dim_c + cs.connector + " " + w.caused_by + ":" + pal.reset + "\n"
+        out = out + "  " + paint(pal.border_c, cs.connector, pal) + " " + paint(pal.dim_c, w.caused_by + ":", pal) + "\n"
         for r in d.related is
             out = out + fmt::indent(render_graphical(r, theme), 4) + "\n"
         end
@@ -892,36 +1010,38 @@ end
 ;; ═══════════════════════════════════════════════════════════════════════════
 
 fn render_narratable(d: Diagnostic, theme: Theme) -> string is
-    let w: Words = theme.words
-    let mut out: string = capitalize(sev_word_for(d.severity, w)) + ": " + d.message + "\n"
+    let w:   Words   = theme.words
+    let pal: Palette = theme.palette
+    let sev_color: string = severity_color(d.severity, pal)
+    let mut out: string = paint(sev_color, capitalize(sev_word_for(d.severity, w)) + ":", pal) + " " + pal.bold_c + d.message + pal.reset + "\n"
 
     if d.code != "" is
-        out = out + "    Kod: " + d.code + "\n"
+        out = out + "    " + paint(pal.dim_c, "Kod:", pal) + " " + paint(pal.code_c, d.code, pal) + "\n"
     end
-    out = out + "    Poziom: " + sev_word_for(d.severity, w) + "\n"
+    out = out + "    " + paint(pal.dim_c, "Poziom:", pal) + " " + paint(sev_color, sev_word_for(d.severity, w), pal) + "\n"
 
     if d.source_code != "" is
         for l in d.labels is
             let ln:   int    = line_of_offset(d.source_code, l.sp.offset)
             let col:  int    = col_of_offset(d.source_code, l.sp.offset)
             let text: string = get_line_text(d.source_code, ln)
-            out = out + "    Linia " + to_string(ln) + ", kolumna " + to_string(col)
-            if d.source_name != "" is out = out + " (" + d.source_name + ")" end
+            out = out + "    " + paint(pal.dim_c, "Linia", pal) + " " + paint(pal.pos_c, to_string(ln), pal) + paint(pal.dim_c, ", kolumna", pal) + " " + paint(pal.pos_c, to_string(col), pal)
+            if d.source_name != "" is out = out + " (" + paint(pal.path_c, d.source_name, pal) + ")" end
             out = out + ":\n"
             out = out + "        " + str::trim(text) + "\n"
             if l.text != "" is
-                out = out + "        Etykieta: " + l.text + "\n"
+                out = out + "        " + paint(label_color(l.primary, sev_color, pal), "Etykieta:", pal) + " " + l.text + "\n"
             end
         end
     end
 
-    if d.help != "" is out = out + w.help + ": " + d.help + "\n" end
-    if d.note != "" is out = out + w.note + ": " + d.note + "\n" end
-    if d.url  != "" is out = out + w.see  + ": " + d.url  + "\n" end
+    if d.help != "" is out = out + paint(pal.help_c, w.help + ":", pal) + " " + d.help + "\n" end
+    if d.note != "" is out = out + paint(pal.note_c, w.note + ":", pal) + " " + d.note + "\n" end
+    if d.url  != "" is out = out + paint(pal.note_c, w.see  + ":", pal) + " " + paint(pal.link_c, d.url, pal) + "\n" end
 
     if d.related.len() > 0 is
         for r in d.related is
-            out = out + w.caused_by + ":\n" + fmt::indent(render_narratable(r, theme), 4) + "\n"
+            out = out + paint(pal.dim_c, w.caused_by + ":", pal) + "\n" + fmt::indent(render_narratable(r, theme), 4) + "\n"
         end
     end
 
@@ -932,38 +1052,42 @@ end
 ;; 10. STYL "MINIMAL" — jedna linia na wpis, jak komunikaty kompilatora
 ;; ═══════════════════════════════════════════════════════════════════════════
 
-fn loc_prefix(d: Diagnostic, line_no: int, col: int) -> string is
+fn loc_prefix(d: Diagnostic, line_no: int, col: int, pal: Palette) -> string is
     if d.source_name != "" is
-        return d.source_name + ":" + to_string(line_no) + ":" + to_string(col)
+        return paint(pal.path_c, d.source_name, pal) + paint(pal.border_c, ":", pal) +
+               paint(pal.pos_c, to_string(line_no) + ":" + to_string(col), pal)
     end
-    return "nidus"
+    return paint(pal.path_c, "nidus", pal)
 end
 
 fn render_minimal(d: Diagnostic, theme: Theme) -> string is
-    let w: Words = theme.words
-    let sev_word: string = sev_word_for(d.severity, w)
-    let code_suffix: string = if d.code != "" is " [" + d.code + "]" else is "" end
+    let w:   Words   = theme.words
+    let pal: Palette = theme.palette
+    let sev_color: string = severity_color(d.severity, pal)
+    let sev_word:  string = paint(sev_color, sev_word_for(d.severity, w), pal)
+    let msg:       string = pal.bold_c + colorize_ticks(d.message, pal.code_c, pal.bold_c, pal) + pal.reset
+    let code_suffix: string = if d.code != "" is " " + paint(pal.border_c, "[", pal) + paint(pal.code_c, d.code, pal) + paint(pal.border_c, "]", pal) else is "" end
 
     let mut out: string = ""
     if d.source_code != "" && d.labels.len() > 0 is
         for l in d.labels is
             let ln:     int    = line_of_offset(d.source_code, l.sp.offset)
             let col:    int    = col_of_offset(d.source_code, l.sp.offset)
-            let prefix: string = loc_prefix(d, ln, col)
+            let prefix: string = loc_prefix(d, ln, col, pal)
             if l.text != "" is
-                out = out + prefix + ": " + sev_word + ": " + d.message + " -- " + l.text + code_suffix + "\n"
+                out = out + prefix + ": " + sev_word + ": " + msg + " " + paint(label_color(l.primary, sev_color, pal), "-- " + l.text, pal) + code_suffix + "\n"
             else is
-                out = out + prefix + ": " + sev_word + ": " + d.message + code_suffix + "\n"
+                out = out + prefix + ": " + sev_word + ": " + msg + code_suffix + "\n"
             end
         end
     else is
-        let prefix: string = if d.source_name != "" is d.source_name else is "nidus" end
-        out = out + prefix + ": " + sev_word + ": " + d.message + code_suffix + "\n"
+        let prefix: string = if d.source_name != "" is paint(pal.path_c, d.source_name, pal) else is paint(pal.path_c, "nidus", pal) end
+        out = out + prefix + ": " + sev_word + ": " + msg + code_suffix + "\n"
     end
 
-    if d.help != "" is out = out + "  " + w.help + ": " + d.help + "\n" end
-    if d.note != "" is out = out + "  " + w.note + ": " + d.note + "\n" end
-    if d.url  != "" is out = out + "  " + w.see  + ": " + d.url  + "\n" end
+    if d.help != "" is out = out + "  " + paint(pal.help_c, w.help + ":", pal) + " " + d.help + "\n" end
+    if d.note != "" is out = out + "  " + paint(pal.note_c, w.note + ":", pal) + " " + d.note + "\n" end
+    if d.url  != "" is out = out + "  " + paint(pal.note_c, w.see  + ":", pal) + " " + paint(pal.link_c, d.url, pal) + "\n" end
 
     for r in d.related is
         out = out + render_minimal(r, theme)
@@ -1126,7 +1250,7 @@ end
 pub fn render(d: Diagnostic, cfg: Config) -> string is
     return match cfg.style is
         Style::Graphical     => render_graphical(d, cfg.theme)
-        Style::Ascii         => render_graphical(d, cfg.theme)
+        Style::Ascii         => render_graphical(d, cfg.theme.with_charset(charset_ascii()))
         Style::Narratable    => render_narratable(d, cfg.theme)
         Style::Minimal       => render_minimal(d, cfg.theme)
         Style::Json          => render_json(d)
@@ -1164,9 +1288,7 @@ pub fn die_with(d: Diagnostic, cfg: Config) is
     exit(exit_code_for(d.severity))
 end
 
-;; Zwraca zdanie podsumowujące listę diagnostyk, np.
-;; "2 błędy, 1 ostrzeżenie".
-pub fn summarize(ds: [Diagnostic]) -> string is
+fn summarize_with(ds: [Diagnostic], pal: Palette) -> string is
     let mut errors:   int = 0
     let mut warnings: int = 0
     let mut advices:  int = 0
@@ -1180,25 +1302,55 @@ pub fn summarize(ds: [Diagnostic]) -> string is
 
     let mut parts: [string] = []
     if errors > 0 is
-        parts.push(to_string(errors) + " " + pluralize(errors, "błąd", "błędy", "błędów"))
+        parts.push(paint(pal.error_c, to_string(errors) + " " + pluralize(errors, "błąd", "błędy", "błędów"), pal))
     end
     if warnings > 0 is
-        parts.push(to_string(warnings) + " " + pluralize(warnings, "ostrzeżenie", "ostrzeżenia", "ostrzeżeń"))
+        parts.push(paint(pal.warning_c, to_string(warnings) + " " + pluralize(warnings, "ostrzeżenie", "ostrzeżenia", "ostrzeżeń"), pal))
     end
     if advices > 0 is
-        parts.push(to_string(advices) + " " + pluralize(advices, "porada", "porady", "porad"))
+        parts.push(paint(pal.advice_c, to_string(advices) + " " + pluralize(advices, "porada", "porady", "porad"), pal))
     end
     if parts.len() == 0 is return "Brak zgłoszonych diagnostyk." end
-    return str::join(parts, ", ")
+    return str::join(parts, paint(pal.border_c, ", ", pal))
 end
 
-;; Wypisuje wszystkie diagnostyki, a na końcu jedno zbiorcze podsumowanie.
+;; Zwraca zdanie podsumowujące listę diagnostyk, np.
+;; "2 błędy, 1 ostrzeżenie" (czysty tekst, bez kolorów).
+pub fn summarize(ds: [Diagnostic]) -> string is
+    return summarize_with(ds, palette_mono())
+end
+
+;; To samo, ale pokolorowane paletą z motywu (błędy czerwone, ostrzeżenia
+;; żółte, porady cyjan). Dla motywów mono daje czysty tekst.
+pub fn summarize_colored(ds: [Diagnostic], theme: Theme) -> string is
+    return summarize_with(ds, theme.palette)
+end
+
+;; Czy dany styl to widok dla człowieka (a więc może być kolorowy)?
+fn style_is_human(s: Style) -> bool is
+    return match s is
+        Style::Graphical     => true
+        Style::Ascii         => true
+        Style::Narratable    => true
+        Style::Minimal       => true
+        Style::Json          => false
+        Style::Markdown      => false
+        Style::GithubActions => false
+    end
+end
+
+;; Wypisuje wszystkie diagnostyki, a na końcu jedno zbiorcze podsumowanie
+;; (kolorowe w stylach przeznaczonych dla człowieka).
 pub fn print_all(ds: [Diagnostic], cfg: Config) is
     for d in ds is
         write(render(d, cfg))
     end
     write("")
-    write(summarize(ds))
+    if style_is_human(cfg.style) is
+        write(summarize_colored(ds, cfg.theme))
+    else is
+        write(summarize(ds))
+    end
 end
 
 ;; ═══════════════════════════════════════════════════════════════════════════
@@ -1328,4 +1480,87 @@ fn test_custom_theme_words() is
     let t: Theme = theme_dark().with_words(words_pl())
     assert_eq(t.words.error, "błąd")
     assert_eq(t.words.help, "pomoc")
+end
+
+;; ── testy kolorów (0.2.0) ─────────────────────────────────────────────────
+
+fn sample_diag() -> Diagnostic is
+    let mut d: Diagnostic = error("nieznana zmienna `c`")
+    d = d.with_code("nidus::resolve::unknown_ident")
+    d = d.with_source("add.ns", "fn add(a: int, b: int) -> int is\n    return a + c\nend\n")
+    d = d.with_label(primary_label(48, 1, "brak takiej zmiennej"))
+    d = d.with_label(label(15, 1, "czy chodziło o `b`?"))
+    d = d.with_help("sprawdź literówki w `nazwach`")
+    d = d.with_url("https://example.com/e")
+    return d
+end
+
+#[test]
+fn test_colors_present_in_dark_theme() is
+    let out: string = render(sample_diag(), config_with(Style::Graphical, theme_dark()))
+    assert_true(out.contains("\x1b[1;91m"))   ;; kolor błędu
+    assert_true(out.contains("\x1b[95m"))     ;; kod błędu / `backticki`
+    assert_true(out.contains("\x1b[96m"))     ;; numer linii z etykietą
+end
+
+#[test]
+fn test_mono_theme_has_no_escape_codes() is
+    let styles: [Style] = [Style::Graphical, Style::Ascii, Style::Narratable, Style::Minimal]
+    for st in styles is
+        let out: string = render(sample_diag(), config_with(st, theme_mono()))
+        assert_true(!out.contains("\x1b"))
+    end
+end
+
+#[test]
+fn test_colors_do_not_change_layout() is
+    ;; po zdjęciu sekwencji ANSI widok kolorowy == widok bez kolorów
+    let colored: string = render(sample_diag(), config_with(Style::Graphical, theme_dark()))
+    let plain:   string = render(sample_diag(), config_with(Style::Graphical, theme_mono_unicode()))
+    assert_eq(fmt::strip_ansi(colored), plain)
+
+    let colored_min: string = render(sample_diag(), config_with(Style::Minimal, theme_dark()))
+    let plain_min:   string = render(sample_diag(), config_with(Style::Minimal, theme_mono()))
+    assert_eq(fmt::strip_ansi(colored_min), plain_min)
+end
+
+#[test]
+fn test_highlight_line() is
+    let pal: Palette = palette_dark()
+    let placed: [Placed] = [Placed { text: "x", primary: true, col_start: 5, col_end: 8 }]
+    let out: string = highlight_line("abcdefghij", placed, pal.error_c, pal)
+    assert_eq(fmt::strip_ansi(out), "abcdefghij")
+    assert_true(out.contains(pal.error_c + "efg" + pal.reset))
+    ;; bez kolorów — dokładnie ten sam tekst
+    let mono: Palette = palette_mono()
+    assert_eq(highlight_line("abcdefghij", placed, "", mono), "abcdefghij")
+end
+
+#[test]
+fn test_colorize_ticks() is
+    let pal: Palette = palette_dark()
+    let out: string = colorize_ticks("użyj `foo()` teraz", pal.code_c, "", pal)
+    assert_eq(fmt::strip_ansi(out), "użyj `foo()` teraz")
+    assert_true(out.contains(pal.code_c + "`foo()`" + pal.reset))
+    ;; niedomknięty backtick zostaje bez zmian
+    assert_eq(colorize_ticks("a `b", pal.code_c, "", pal), "a `b")
+    ;; mono — bez zmian
+    assert_eq(colorize_ticks("a `b` c", "", "", palette_mono()), "a `b` c")
+end
+
+#[test]
+fn test_ascii_style_uses_ascii_charset() is
+    let out: string = render(sample_diag(), config_with(Style::Ascii, theme_mono_unicode()))
+    assert_true(!out.contains("╭"))
+    assert_true(!out.contains("│"))
+end
+
+#[test]
+fn test_summarize_colored() is
+    let ds: [Diagnostic] = [error("a"), warning("c")]
+    let plain: string = summarize_colored(ds, theme_mono())
+    assert_eq(plain, summarize(ds))
+    let col: string = summarize_colored(ds, theme_dark())
+    assert_eq(fmt::strip_ansi(col), summarize(ds))
+    assert_true(col.contains("\x1b"))
 end
