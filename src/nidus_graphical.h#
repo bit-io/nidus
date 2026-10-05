@@ -64,7 +64,7 @@ pub fn highlight_line(text: string, placed: [Placed], sev_color: string, pal: ni
         if b > n + 1 is b = n + 1 end
         if a <= n && b > a is
             if a > cursor is out = out + text[cursor - 1..a - 1] end
-            out = out + nidus_theme::paint(label_color(p.primary, sev_color, pal), text[a - 1..b - 1], pal)
+            out = out + nidus_theme::paint(nidus_theme::label_color(p.primary, sev_color, pal), text[a - 1..b - 1], pal)
             cursor = b
         end
     end
@@ -137,14 +137,18 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
             let mut underline: string = gutter_dot
             let mut cursor: int = 1
             for p in placed is
-                if p.col_start > cursor is
-                    underline = underline + fmt::repeat(" ", p.col_start - cursor)
-                    cursor = p.col_start
+                let mut a: int = p.col_start
+                if a < cursor is a = cursor end
+                if a > cursor is
+                    underline = underline + fmt::repeat(" ", a - cursor)
+                    cursor = a
                 end
-                let seg_len: int = p.col_end - p.col_start
-                let color:   string = nidus_theme::label_color(p.primary, sev_color, pal)
-                underline = underline + nidus_theme::paint(color, fmt::repeat(cs.underline, seg_len), pal)
-                cursor = p.col_end
+                let seg_len: int = p.col_end - a
+                if seg_len > 0 is
+                    let color: string = nidus_theme::label_color(p.primary, sev_color, pal)
+                    underline = underline + nidus_theme::paint(color, fmt::repeat(cs.underline, seg_len), pal)
+                    cursor = p.col_end
+                end
             end
             out = out + underline + "\n"
 
@@ -164,7 +168,7 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
                                 row = row + fmt::repeat(" ", other.col_start - c2)
                                 c2 = other.col_start
                             end
-                            row = row + nidus_theme::paint(label_color(other.primary, sev_color, pal), cs.vbar_connector, pal)
+                            row = row + nidus_theme::paint(nidus_theme::label_color(other.primary, sev_color, pal), cs.vbar_connector, pal)
                             c2 = c2 + 1
                         end
                         j += 1
@@ -172,7 +176,7 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
                     if p.col_start > c2 is
                         row = row + fmt::repeat(" ", p.col_start - c2)
                     end
-                    row = row + nidus_theme::paint(label_color(p.primary, sev_color, pal), cs.connector + " " + p.text, pal)
+                    row = row + nidus_theme::paint(nidus_theme::label_color(p.primary, sev_color, pal), cs.connector + " " + p.text, pal)
                     out = out + row + "\n"
                 end
                 idx = idx - 1
@@ -206,18 +210,18 @@ pub fn render_graphical(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::The
         out = out + render_snippet(d, theme) + "\n"
     elsif d.labels.len() > 0 is
         for l in d.labels is
-            out = out + "    " + nidus_theme::paint(label_color(l.primary, sev_color, pal), "->", pal) + " " + nidus_theme::colorize_ticks(l.text, pal.code_c, "", pal) + "\n"
+            out = out + "    " + nidus_theme::paint(nidus_theme::label_color(l.primary, sev_color, pal), "->", pal) + " " + nidus_theme::colorize_ticks(l.text, pal.code_c, "", pal) + "\n"
         end
         out = out + "\n"
     end
 
     if d.help != "" is
         let hp: string = "  " + nidus_theme::paint(pal.help_c, w.help + ":", pal) + " "
-        out = out + nidus_theme::colorize_ticks(wrap_with_prefix(d.help, hp, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
+        out = out + nidus_theme::colorize_ticks(nidus_text::wrap_with_prefix(d.help, hp, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
     end
     if d.note != "" is
         let np: string = "  " + nidus_theme::paint(pal.note_c, w.note + ":", pal) + " "
-        out = out + nidus_theme::colorize_ticks(wrap_with_prefix(d.note, np, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
+        out = out + nidus_theme::colorize_ticks(nidus_text::wrap_with_prefix(d.note, np, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
     end
     if d.url != "" is
         out = out + "   " + nidus_theme::paint(pal.note_c, w.see + ":", pal) + " " + nidus_theme::paint(pal.link_c, d.url, pal) + "\n"
