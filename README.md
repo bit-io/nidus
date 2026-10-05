@@ -73,6 +73,7 @@ Więcej gotowych przykładów w [`examples/`](examples/):
 | `multi_label.h#` | Dwie etykiety (główna + pomocnicza) w jednym fragmencie |
 | `custom_theme.h#` | Motyw retro (truecolor), polska lokalizacja, własny motyw |
 | `all_styles.h#` | Ta sama diagnostyka we wszystkich 7 stylach |
+| `colors.h#` | Kolorowy pokaz: error/warning/advice, motywy dark/light/retro, kolorowe podsumowanie |
 | `related_chain.h#` | Łańcuch przyczyn (`with_related`) |
 
 ## Model danych
@@ -135,7 +136,7 @@ liniach — styl `Graphical`/`Ascii` narysuje je wszystkie, w tym efekt
 | Styl | Kiedy używać |
 |---|---|
 | `Style::Graphical` | Terminal interaktywny, UTF-8 — pełny widok z fragmentem kodu, strzałkami, kolorami |
-| `Style::Ascii` | Jak wyżej, ale bez znaków unikodowych (stare terminale, `TERM=dumb` z wymuszonym kolorem) |
+| `Style::Ascii` | Jak wyżej, ale bez znaków unikodowych — zestaw znaków jest wymuszany na ASCII niezależnie od motywu |
 | `Style::Narratable` | Czytniki ekranu — pełne zdania zamiast grafiki ASCII |
 | `Style::Minimal` | Jedna linia na wpis, `plik:linia:kolumna: poziom: wiadomość` — do `grep`/logów |
 | `Style::Json` | Wyjście maszynowe do dalszego przetwarzania (pola zawsze po angielsku) |
@@ -155,12 +156,42 @@ nidus::report_with(d, cfg2)
 `nidus::auto_style()`:
 1. `GITHUB_ACTIONS=true` → `GithubActions`
 2. zmienna `NIDUS_STYLE` (`graphical`/`ascii`/`narratable`/`minimal`/`json`/`markdown`/`github`) → wymuszony styl
-3. stdout nie jest terminalem (`term::is_tty()` == false) → `Minimal`
+3. stdout nie jest terminalem (`term::is_tty()` == false) i kolor nie jest wymuszony (`NIDUS_COLOR=always`, `FORCE_COLOR`, `CLICOLOR_FORCE`) → `Minimal`
 4. terminal z UTF-8 (`LANG`/`LC_ALL`) → `Graphical`
 5. w przeciwnym razie → `Ascii`
 
-`nidus::auto_theme()`: honoruje `NO_COLOR` (zero kolorów) i `TERM=dumb`,
+`nidus::auto_theme()`: honoruje `NIDUS_COLOR`, `NO_COLOR`, `FORCE_COLOR` i `TERM=dumb`,
 oraz wspiera unikod tylko gdy terminal go deklaruje.
+
+## Kolory (od 0.2.0)
+
+Style przeznaczone dla człowieka (`Graphical`, `Ascii`, `Narratable`, `Minimal`)
+są w pełni kolorowe — nie tylko nagłówek:
+
+- **błędne miejsce podświetlone w samej linii kodu** (kolorem etykiety, pogrubione),
+- ramka (`╭─[`, `│`, `╰────`), numery linii, ścieżka pliku, `linia:kolumna`
+  i kod błędu mają **własne kolory** (zobacz pola `Palette`),
+- etykiety główne w kolorze poziomu (czerwony/żółty/cyjan), pomocnicze w osobnym kolorze,
+- fragmenty w \`backtickach\` w wiadomości, pomocy i uwadze są wyróżnione,
+- `print_all` kończy **kolorowym podsumowaniem** (`2 błędy, 1 ostrzeżenie`);
+  `nidus::summarize_colored(ds, theme)` zwraca je samodzielnie,
+- `Json`, `Markdown` i `GithubActions` są zawsze czystym tekstem.
+
+Kolory nie zmieniają układu: po zdjęciu sekwencji ANSI widok jest identyczny jak
+w motywie mono (pilnuje tego test `test_colors_do_not_change_layout`).
+
+### Sterowanie kolorem
+
+Kolejność decyzji (`nidus::detect_color_support()`):
+
+1. `NIDUS_COLOR=always` / `never` — jawne nadpisanie (np. gdy nidus działa w procesie
+   potomnym z podpiętym pipe'm, a wynik trafia potem do terminala),
+2. `NO_COLOR` — bez kolorów,
+3. `CLICOLOR_FORCE` / `FORCE_COLOR` — kolory wymuszone,
+4. terminal (`TERM` ustawiony i różny od `dumb`) — kolory.
+
+Przy wymuszonym kolorze autodetekcja stylu wybiera `Graphical`/`Ascii` zamiast `Minimal`.
+Wersja w kodzie: `nidus::config_colored()` — zawsze kolorowy widok graficzny.
 
 ## Motywy
 
@@ -189,7 +220,13 @@ t = t.with_charset(moj_zestaw_znakow)
 
 Ponieważ `Palette` to zwykłe pola typu `string` z kodami ANSI, możesz
 zbudować dowolny kolor (w tym truecolor) — zobacz `theme_retro()` w
-`src/lib.h#` jako wzór.
+`src/lib.h#` jako wzór. Pola palety: `error_c`, `warning_c`, `advice_c`, `help_c`,
+`note_c`, `link_c`, `dim_c`, `bold_c`, `reset` oraz (od 0.2.0) `border_c`, `lineno_c`,
+`path_c`, `pos_c`, `code_c`, `secondary_c`. Puste pole = brak koloru dla tego elementu.
+
+> **Zmiana niekompatybilna w 0.2.0:** literał `nidus::Palette { ... }` wymaga teraz
+> wszystkich 15 pól. Jeśli budujesz paletę ręcznie, zacznij od gotowej i podmień pola
+> (`let mut p = ...; p.error_c = "..."`) albo dopisz sześć nowych.
 
 ## Łańcuchy przyczyn
 
