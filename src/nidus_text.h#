@@ -1,0 +1,145 @@
+use "std -> strings" from "str"
+use "std -> fmt"     from "fmt"
+
+pub fn clamp_offset(offset: int, n: int) -> int is
+    if offset < 0 is return 0 end
+    if offset > n is return n end
+    return offset
+end
+
+pub fn line_count(src: string) -> int is
+    let n: int = src.len()
+    let mut lines: int = 1
+    let mut i: int = 0
+    while i < n is
+        if src[i..i + 1] == "\n" is
+            lines += 1
+        end
+        i += 1
+    end
+    return lines
+end
+
+pub fn line_of_offset(src: string, offset: int) -> int is
+    let n: int = src.len()
+    let clamped: int = clamp_offset(offset, n)
+    let mut line: int = 1
+    let mut i: int = 0
+    while i < clamped is
+        if src[i..i + 1] == "\n" is
+            line += 1
+        end
+        i += 1
+    end
+    return line
+end
+
+pub fn col_of_offset(src: string, offset: int) -> int is
+    let n: int = src.len()
+    let clamped: int = clamp_offset(offset, n)
+    let mut col: int = 1
+    let mut i: int = clamped
+    while i > 0 is
+        i -= 1
+        if src[i..i + 1] == "\n" is
+            return col
+        end
+        col += 1
+    end
+    return col
+end
+
+pub fn strip_cr(s: string) -> string is
+    let n: int = s.len()
+    if n > 0 && s[n - 1..n] == "\r" is
+        return s[0..n - 1]
+    end
+    return s
+end
+
+;; Zwraca treść pojedynczej linii (1-based, bez \n / \r).
+;; Nieistniejący numer linii zwraca "".
+pub fn get_line_text(src: string, line_no: int) -> string is
+    let n: int = src.len()
+    let mut current: int = 1
+    let mut start: int = 0
+    let mut i: int = 0
+    while i <= n is
+        if i == n || src[i..i + 1] == "\n" is
+            if current == line_no is
+                return strip_cr(src[start..i])
+            end
+            current += 1
+            start = i + 1
+        end
+        i += 1
+    end
+    return ""
+end
+
+pub fn capitalize(s: string) -> string is
+    if s.len() == 0 is return s end
+    return str::to_upper(s[0..1]) + s[1..s.len()]
+end
+
+;; Zawija `text` do `width` znaków, dokleja `prefix` do pierwszej linii
+;; i `cont_indent` do kolejnych (przydatne dla "  help: ..." / "  note: ...").
+pub fn wrap_with_prefix(text: string, prefix: string, cont_indent: string, width: int) -> string is
+    let mut avail: int = width - cont_indent.len()
+    if avail < 20 is avail = 20 end
+    let wrapped: string  = fmt::wrap(text, avail)
+    let lines:   [string] = str::split(wrapped, "\n")
+    let mut out: string = ""
+    let mut i: int = 0
+    while i < lines.len() is
+        if i == 0 is
+            out = out + prefix + lines[i]
+        else is
+            out = out + "\n" + cont_indent + lines[i]
+        end
+        i += 1
+    end
+    return out
+end
+
+;; Odmiana polskich rzeczowników w liczbie mnogiej (1 / 2-4 / 5+).
+pub fn pluralize(n: int, one: string, few: string, many: string) -> string is
+    let mod10:  int = n % 10
+    let mod100: int = n % 100
+    if n == 1 is return one end
+    if mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14) is return few end
+    return many
+end
+
+pub fn json_escape(s: string) -> string is
+    let n: int = s.len()
+    let mut out: string = ""
+    let mut i: int = 0
+    while i < n is
+        let c: string = s[i..i + 1]
+        if c == "\"" is
+            out = out + "\\\""
+        elsif c == "\\" is
+            out = out + "\\\\"
+        elsif c == "\n" is
+            out = out + "\\n"
+        elsif c == "\r" is
+            out = out + "\\r"
+        elsif c == "\t" is
+            out = out + "\\t"
+        else is
+            out = out + c
+        end
+        i += 1
+    end
+    return out
+end
+
+;; Ucieczka danych zgodnie z formatem GitHub Actions workflow-command
+;; (kolejność ma znaczenie: `%` musi być zamienione jako pierwsze).
+pub fn gh_escape(s: string) -> string is
+    let s1: string = str::replace_all(s, "%", "%25")
+    let s2: string = str::replace_all(s1, "\r", "%0D")
+    let s3: string = str::replace_all(s2, "\n", "%0A")
+    return s3
+end
