@@ -1,0 +1,211 @@
+use "std -> fmt"  from "fmt"
+use "std -> test" from "test"
+
+mod nidus_severity
+mod nidus_text
+mod nidus_span
+mod nidus_theme
+mod nidus_diagnostic
+mod nidus_style
+mod nidus_graphical
+mod nidus_plain
+mod nidus_machine
+mod nidus_report
+
+#[test]
+fn test_span_basic() is
+    let s: nidus_span::Span = nidus_span::span(10, 5)
+    assert_eq(s.end_offset(), 15)
+    assert_true(s.contains(10))
+    assert_true(s.contains(14))
+    assert_true(!s.contains(15))
+end
+
+#[test]
+fn test_line_col_conversion() is
+    let src: string = "abc\ndef\nghi"
+    assert_eq(nidus_text::line_of_offset(src, 0), 1)
+    assert_eq(nidus_text::line_of_offset(src, 4), 2)
+    assert_eq(nidus_text::line_of_offset(src, 8), 3)
+    assert_eq(nidus_text::col_of_offset(src, 4), 1)
+    assert_eq(nidus_text::col_of_offset(src, 6), 3)
+    assert_eq(nidus_text::line_count(src), 3)
+end
+
+#[test]
+fn test_get_line_text() is
+    let src: string = "let x = 1\nlet y = 2\n"
+    assert_eq(nidus_text::get_line_text(src, 1), "let x = 1")
+    assert_eq(nidus_text::get_line_text(src, 2), "let y = 2")
+end
+
+#[test]
+fn test_diagnostic_builder() is
+    let mut d: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("coś poszło nie tak")
+    d = d.with_code("nidus::test::demo")
+    d = d.with_help("spróbuj ponownie")
+    d = d.with_label(nidus_span::primary_label(4, 3, "tutaj"))
+
+    assert_eq(d.message, "coś poszło nie tak")
+    assert_eq(d.code, "nidus::test::demo")
+    assert_eq(d.help, "spróbuj ponownie")
+    assert_eq(d.labels.len(), 1)
+    assert_true(d.is_error())
+end
+
+#[test]
+fn test_severity_constructors() is
+    let w: nidus_diagnostic::Diagnostic = nidus_diagnostic::warning("uwaga")
+    let a: nidus_diagnostic::Diagnostic = nidus_diagnostic::advice("porada")
+    assert_true(!w.is_error())
+    assert_true(!a.is_error())
+    assert_eq(nidus_severity::index(w.severity), 1)
+    assert_eq(nidus_severity::index(a.severity), 2)
+end
+
+#[test]
+fn test_render_all_styles_nonempty() is
+    let mut d: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("dzielenie przez zero")
+    d = d.with_code("nidus::eval::div_zero")
+    d = d.with_source("main.ns", "let y = x / 0\n")
+    d = d.with_label(nidus_span::primary_label(8, 5, "tu nie można dzielić przez zero"))
+    d = d.with_help("sprawdź mianownik przed dzieleniem")
+
+    let styles: [nidus_style::Style] = nidus_style::all()
+    assert_eq(styles.len(), 7)
+    for s in styles is
+        let cfg: nidus_style::Config = nidus_style::config_with(s, nidus_theme::theme_mono())
+        let out: string = nidus_report::render(d, cfg)
+        assert_true(out.len() > 0)
+    end
+end
+
+#[test]
+fn test_json_escaping() is
+    let d: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("z \"cudzysłowem\" i\nnową linią")
+    let out: string = nidus_machine::render_json(d)
+    assert_true(out.contains("\\\""))
+    assert_true(out.contains("\\n"))
+end
+
+#[test]
+fn test_summarize() is
+    let ds: [nidus_diagnostic::Diagnostic] = [nidus_diagnostic::error("a"), nidus_diagnostic::error("b"), nidus_diagnostic::warning("c")]
+    let summary: string = nidus_report::summarize(ds)
+    assert_true(summary.contains("2 błędy"))
+    assert_true(summary.contains("1 ostrzeżenie"))
+end
+
+#[test]
+fn test_related_chain() is
+    let cause: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("plik nie istnieje").with_code("nidus::io::not_found")
+    let mut root: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("nie udało się wczytać konfiguracji")
+    root = root.with_related(cause)
+
+    assert_eq(root.related.len(), 1)
+    assert_eq(root.related[0].code, "nidus::io::not_found")
+
+    let out: string = nidus_report::render(root, nidus_style::config_with(nidus_style::narratable(), nidus_theme::theme_polski()))
+    assert_true(out.contains("spowodowane przez"))
+end
+
+#[test]
+fn test_custom_theme_words() is
+    let t: nidus_theme::Theme = nidus_theme::theme_dark().with_words(nidus_theme::words_pl())
+    assert_eq(t.words.error, "błąd")
+    assert_eq(t.words.help, "pomoc")
+end
+
+;; ── kolory (0.2.0) ────────────────────────────────────────────────────────
+
+fn sample_diag() -> nidus_diagnostic::Diagnostic is
+    let mut d: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("nieznana zmienna `c`")
+    d = d.with_code("nidus::resolve::unknown_ident")
+    d = d.with_source("add.ns", "fn add(a: int, b: int) -> int is\n    return a + c\nend\n")
+    d = d.with_label(nidus_span::primary_label(48, 1, "brak takiej zmiennej"))
+    d = d.with_label(nidus_span::label(15, 1, "czy chodziło o `b`?"))
+    d = d.with_help("sprawdź literówki w `nazwach`")
+    d = d.with_url("https://example.com/e")
+    return d
+end
+
+#[test]
+fn test_colors_present_in_dark_theme() is
+    let out: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::graphical(), nidus_theme::theme_dark()))
+    assert_true(out.contains("\x1b[1;91m"))   ;; kolor błędu
+    assert_true(out.contains("\x1b[95m"))     ;; kod błędu / `backticki`
+    assert_true(out.contains("\x1b[96m"))     ;; numer linii z etykietą
+end
+
+#[test]
+fn test_mono_theme_has_no_escape_codes() is
+    let styles: [nidus_style::Style] = [nidus_style::graphical(), nidus_style::ascii(), nidus_style::narratable(), nidus_style::minimal()]
+    for st in styles is
+        let out: string = nidus_report::render(sample_diag(), nidus_style::config_with(st, nidus_theme::theme_mono()))
+        assert_true(!out.contains("\x1b"))
+    end
+end
+
+#[test]
+fn test_colors_do_not_change_layout() is
+    ;; po zdjęciu sekwencji ANSI widok kolorowy == widok bez kolorów
+    let colored: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::graphical(), nidus_theme::theme_dark()))
+    let plain:   string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::graphical(), nidus_theme::theme_mono_unicode()))
+    assert_eq(fmt::strip_ansi(colored), plain)
+
+    let colored_min: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::minimal(), nidus_theme::theme_dark()))
+    let plain_min:   string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::minimal(), nidus_theme::theme_mono()))
+    assert_eq(fmt::strip_ansi(colored_min), plain_min)
+end
+
+#[test]
+fn test_highlight_line() is
+    let pal: nidus_theme::Palette = nidus_theme::palette_dark()
+    let placed: [nidus_graphical::Placed] = [nidus_graphical::placed("x", true, 5, 8)]
+    let out: string = nidus_graphical::highlight_line("abcdefghij", placed, pal.error_c, pal)
+    assert_eq(fmt::strip_ansi(out), "abcdefghij")
+    assert_true(out.contains(pal.error_c + "efg" + pal.reset))
+    ;; bez kolorów — dokładnie ten sam tekst
+    let mono: nidus_theme::Palette = nidus_theme::palette_mono()
+    assert_eq(nidus_graphical::highlight_line("abcdefghij", placed, "", mono), "abcdefghij")
+end
+
+#[test]
+fn test_colorize_ticks() is
+    let pal: nidus_theme::Palette = nidus_theme::palette_dark()
+    let out: string = nidus_theme::colorize_ticks("użyj `foo()` teraz", pal.code_c, "", pal)
+    assert_eq(fmt::strip_ansi(out), "użyj `foo()` teraz")
+    assert_true(out.contains(pal.code_c + "`foo()`" + pal.reset))
+    ;; niedomknięty backtick zostaje bez zmian
+    assert_eq(nidus_theme::colorize_ticks("a `b", pal.code_c, "", pal), "a `b")
+    ;; mono — bez zmian
+    assert_eq(nidus_theme::colorize_ticks("a `b` c", "", "", nidus_theme::palette_mono()), "a `b` c")
+end
+
+#[test]
+fn test_ascii_style_uses_ascii_charset() is
+    let out: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::ascii(), nidus_theme::theme_mono_unicode()))
+    assert_true(!out.contains("╭"))
+    assert_true(!out.contains("│"))
+end
+
+#[test]
+fn test_summarize_colored() is
+    let ds: [nidus_diagnostic::Diagnostic] = [nidus_diagnostic::error("a"), nidus_diagnostic::warning("c")]
+    let plain: string = nidus_report::summarize_colored(ds, nidus_theme::theme_mono())
+    assert_eq(plain, nidus_report::summarize(ds))
+    let col: string = nidus_report::summarize_colored(ds, nidus_theme::theme_dark())
+    assert_eq(fmt::strip_ansi(col), nidus_report::summarize(ds))
+    assert_true(col.contains("\x1b"))
+end
+
+#[test]
+fn test_style_index_roundtrip() is
+    let all: [nidus_style::Style] = nidus_style::all()
+    let mut i: int = 0
+    while i < all.len() is
+        assert_eq(nidus_style::index(all[i]), i)
+        i += 1
+    end
+    assert_eq(nidus_style::style_name(nidus_style::github_actions()), "github")
+end
