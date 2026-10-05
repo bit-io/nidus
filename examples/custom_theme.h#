@@ -1,23 +1,23 @@
 use "bit -> nidus" from "nidus"
 
 fn main() is
-    let mut d: nidus::Diagnostic = nidus::warning("funkcja jest przestarzała")
+    let mut d: nidus::diagnostic::Diagnostic = nidus::warning("funkcja jest przestarzała")
     d = d.with_code("nidus::lint::deprecated")
     d = d.with_note("zostanie usunięta w wersji 1.0")
     d = d.with_help("użyj `nowa_funkcja()` zamiast tego")
 
     ;; 1) Motyw retro (truecolor) + styl graficzny z pełnym unikodem
-    let cfg1: nidus::Config = nidus::config_with(nidus::Style::Graphical, nidus::theme_retro())
+    let cfg1: nidus::style::Config = nidus::config_with(nidus::style::graphical(), nidus::theme_retro())
     nidus::report_with(d, cfg1)
 
     ;; 2) Domyślny ciemny motyw, ale z polskimi etykietami (błąd/pomoc/uwaga)
-    let cfg2: nidus::Config = nidus::config_with(nidus::Style::Graphical, nidus::theme_polski())
+    let cfg2: nidus::style::Config = nidus::config_with(nidus::style::graphical(), nidus::theme_polski())
     nidus::report_with(d, cfg2)
 
     ;; 3) Własny motyw złożony ręcznie z gotowych elementów
-    let mut custom: nidus::Theme = nidus::theme_dark()
+    let mut custom: nidus::theme::Theme = nidus::theme_dark()
     custom = custom.with_context(3)   ;; pokaż 3 linie kontekstu zamiast 1
     custom = custom.with_wrap(60)     ;; węższe zawijanie tekstu pomocy
-    let cfg3: nidus::Config = nidus::config_with(nidus::Style::Ascii, custom)
+    let cfg3: nidus::style::Config = nidus::config_with(nidus::style::ascii(), custom)
     nidus::report_with(d, cfg3)
 end
