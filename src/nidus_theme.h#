@@ -1,0 +1,290 @@
+use "std -> strings" from "str"
+
+mod nidus_severity
+
+pub struct Charset is
+    pub top_left:        string
+    pub h_bar:            string
+    pub v_bar:            string
+    pub bottom_left:      string
+    pub dot:              string
+    pub underline:        string
+    pub connector:        string
+    pub vbar_connector:   string
+    pub icon_error:       string
+    pub icon_warning:     string
+    pub icon_advice:      string
+end
+
+pub fn charset_unicode() -> Charset is
+    return Charset {
+        top_left: "╭", h_bar: "─", v_bar: "│", bottom_left: "╰",
+        dot: "·", underline: "─", connector: "╰─▶", vbar_connector: "│",
+        icon_error: "×", icon_warning: "⚠", icon_advice: "☞"
+    }
+end
+
+pub fn charset_ascii() -> Charset is
+    return Charset {
+        top_left: ",", h_bar: "-", v_bar: "|", bottom_left: "`",
+        dot: ":", underline: "^", connector: "`->", vbar_connector: "|",
+        icon_error: "x", icon_warning: "!", icon_advice: "i"
+    }
+end
+
+pub struct Palette is
+    pub error_c:     string
+    pub warning_c:   string
+    pub advice_c:    string
+    pub help_c:      string
+    pub note_c:      string
+    pub link_c:      string
+    pub dim_c:       string
+    pub bold_c:      string
+    pub reset:       string
+    ;; --- dodane w 0.2.0: pełne kolorowanie widoku ---
+    pub border_c:    string   ;; ramka: ╭─[ │ · ╰────
+    pub lineno_c:    string   ;; numery linii (linie z etykietami)
+    pub path_c:      string   ;; nazwa pliku w nagłówku fragmentu
+    pub pos_c:       string   ;; linia:kolumna
+    pub code_c:      string   ;; kod błędu oraz `fragmenty w backtickach`
+    pub secondary_c: string   ;; etykiety pomocnicze (nie-główne)
+end
+
+pub fn palette_dark() -> Palette is
+    return Palette {
+        error_c:   "\x1b[1;91m",
+        warning_c: "\x1b[1;93m",
+        advice_c:  "\x1b[1;96m",
+        help_c:    "\x1b[92m",
+        note_c:    "\x1b[94m",
+        link_c:    "\x1b[4;94m",
+        dim_c:     "\x1b[2m",
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    "\x1b[90m",
+        lineno_c:    "\x1b[96m",
+        path_c:      "\x1b[1;97m",
+        pos_c:       "\x1b[93m",
+        code_c:      "\x1b[95m",
+        secondary_c: "\x1b[1;94m"
+    }
+end
+
+pub fn palette_light() -> Palette is
+    return Palette {
+        error_c:   "\x1b[1;31m",
+        warning_c: "\x1b[1;33m",
+        advice_c:  "\x1b[1;36m",
+        help_c:    "\x1b[32m",
+        note_c:    "\x1b[34m",
+        link_c:    "\x1b[4;34m",
+        dim_c:     "\x1b[90m",
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    "\x1b[90m",
+        lineno_c:    "\x1b[34m",
+        path_c:      "\x1b[1;30m",
+        pos_c:       "\x1b[33m",
+        code_c:      "\x1b[35m",
+        secondary_c: "\x1b[1;34m"
+    }
+end
+
+pub fn palette_mono() -> Palette is
+    return Palette {
+        error_c: "", warning_c: "", advice_c: "", help_c: "", note_c: "",
+        link_c: "", dim_c: "", bold_c: "", reset: "",
+        border_c: "", lineno_c: "", path_c: "", pos_c: "", code_c: "", secondary_c: ""
+    }
+end
+
+;; Motyw "retro" — pokazuje, że palety mogą być dowolnym kolorem truecolor
+;; (\x1b[38;2;r;g;bm), nie tylko ośmioma klasycznymi kolorami ANSI.
+pub fn palette_retro() -> Palette is
+    return Palette {
+        error_c:   "\x1b[1m\x1b[38;2;255;70;130m",
+        warning_c: "\x1b[1m\x1b[38;2;255;180;60m",
+        advice_c:  "\x1b[1m\x1b[38;2;120;220;255m",
+        help_c:    "\x1b[38;2;140;255;170m",
+        note_c:    "\x1b[38;2;180;140;255m",
+        link_c:    "\x1b[4m\x1b[38;2;180;140;255m",
+        dim_c:     "\x1b[38;2;120;120;140m",
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    "\x1b[38;2;90;90;125m",
+        lineno_c:    "\x1b[38;2;120;220;255m",
+        path_c:      "\x1b[1m\x1b[38;2;255;255;255m",
+        pos_c:       "\x1b[38;2;255;180;60m",
+        code_c:      "\x1b[38;2;255;120;220m",
+        secondary_c: "\x1b[1m\x1b[38;2;120;220;255m"
+    }
+end
+
+;; Słownik lokalizacyjny — pozwala renderować komunikaty w dowolnym języku
+;; bez dotykania logiki renderowania.
+pub struct Words is
+    pub error:     string
+    pub warning:   string
+    pub advice:    string
+    pub help:      string
+    pub note:      string
+    pub see:       string
+    pub caused_by: string
+end
+
+pub fn words_en() -> Words is
+    return Words {
+        error: "error", warning: "warning", advice: "advice",
+        help: "help", note: "note", see: "see", caused_by: "caused by"
+    }
+end
+
+pub fn words_pl() -> Words is
+    return Words {
+        error: "błąd", warning: "ostrzeżenie", advice: "porada",
+        help: "pomoc", note: "uwaga", see: "zobacz",
+        caused_by: "spowodowane przez"
+    }
+end
+
+pub struct Theme is
+    pub charset:           Charset
+    pub palette:           Palette
+    pub words:              Words
+    pub context_lines:     int    ;; ile linii kontekstu nad/pod etykietami
+    pub wrap_width:        int    ;; szerokość zawijania tekstu pomocy/uwag
+    pub show_line_numbers: bool
+end
+
+impl Theme is
+    fn with_words(self, w: Words) -> Theme is
+        self.words = w
+        return self
+    end
+
+    fn with_charset(self, c: Charset) -> Theme is
+        self.charset = c
+        return self
+    end
+
+    fn with_palette(self, p: Palette) -> Theme is
+        self.palette = p
+        return self
+    end
+
+    fn with_context(self, n: int) -> Theme is
+        self.context_lines = n
+        return self
+    end
+
+    fn with_wrap(self, n: int) -> Theme is
+        self.wrap_width = n
+        return self
+    end
+end
+
+pub fn theme_dark() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_dark(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+pub fn theme_light() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_light(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+;; Bez unikodu (bezpieczne dla starszych terminali), ale wciąż kolorowe.
+pub fn theme_ascii() -> Theme is
+    return Theme {
+        charset: charset_ascii(), palette: palette_dark(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+;; Bez kolorów i bez unikodu — najbezpieczniejszy motyw (logi, pliki, CI).
+pub fn theme_mono() -> Theme is
+    return Theme {
+        charset: charset_ascii(), palette: palette_mono(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+;; Bez kolorów, ale z ładną grafiką unikodową (np. output przekierowany do
+;; pliku na terminalu z UTF-8, gdzie kolor jest zbędny, ale znaki nie szkodzą).
+pub fn theme_mono_unicode() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_mono(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+pub fn theme_retro() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_retro(), words: words_en(),
+        context_lines: 2, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+;; Domyślny ciemny motyw, ale ze wszystkimi napisami po polsku.
+pub fn theme_polski() -> Theme is
+    let mut t: Theme = theme_dark()
+    t.words = words_pl()
+    return t
+end
+
+;; Owija tekst kolorem (nic nie robi, gdy kolor pusty — motywy mono).
+pub fn paint(color: string, text: string, pal: Palette) -> string is
+    if color == "" is return text end
+    return color + text + pal.reset
+end
+
+;; Koloruje fragmenty w `backtickach` (razem z backtickami). Po zamknięciu
+;; fragmentu przywraca styl `after` (np. pogrubienie wiadomości).
+;; Niedomknięty backtick -> tekst bez zmian.
+pub fn colorize_ticks(text: string, color: string, after: string, pal: Palette) -> string is
+    if color == "" is return text end
+    let parts: [string] = str::split(text, "`")
+    if parts.len() % 2 == 0 is return text end
+    let mut out: string = ""
+    let mut i: int = 0
+    while i < parts.len() is
+        if i % 2 == 1 is
+            out = out + color + "`" + parts[i] + "`" + pal.reset + after
+        else is
+            out = out + parts[i]
+        end
+        i += 1
+    end
+    return out
+end
+
+pub fn sev_word_for(sev: nidus_severity::Severity, w: Words) -> string is
+    let i: int = nidus_severity::index(sev)
+    if i == 0 is return w.error end
+    if i == 1 is return w.warning end
+    return w.advice
+end
+
+pub fn severity_color(sev: nidus_severity::Severity, pal: Palette) -> string is
+    let i: int = nidus_severity::index(sev)
+    if i == 0 is return pal.error_c end
+    if i == 1 is return pal.warning_c end
+    return pal.advice_c
+end
+
+pub fn severity_icon(sev: nidus_severity::Severity, cs: Charset) -> string is
+    let i: int = nidus_severity::index(sev)
+    if i == 0 is return cs.icon_error end
+    if i == 1 is return cs.icon_warning end
+    return cs.icon_advice
+end
+
+pub fn label_color(primary: bool, sev_color: string, pal: Palette) -> string is
+    if primary is return sev_color end
+    return pal.secondary_c
+end
