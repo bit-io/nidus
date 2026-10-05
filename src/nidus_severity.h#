@@ -1,1 +1,35 @@
+pub enum Severity is
+    Error
+    Warning
+    Advice
+end
 
+pub fn error_level() -> Severity is
+    return Severity::Error
+end
+
+pub fn warning_level() -> Severity is
+    return Severity::Warning
+end
+
+pub fn advice_level() -> Severity is
+    return Severity::Advice
+end
+
+;; Indeks poziomu (kolejność jak w enumie): 0 Error, 1 Warning, 2 Advice.
+pub fn index(sev: Severity) -> int is
+    return match sev is
+        Severity::Error   => 0
+        Severity::Warning => 1
+        Severity::Advice  => 2
+    end
+end
+
+;; Stałe angielskie słowo (stabilne, używane w JSON / Markdown / GitHub Actions).
+pub fn severity_word_en(sev: Severity) -> string is
+    return match sev is
+        Severity::Error   => "error"
+        Severity::Warning => "warning"
+        Severity::Advice  => "advice"
+    end
+end
