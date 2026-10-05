@@ -31,7 +31,7 @@ Ręcznie, jako zależność w `Bit.hk` Twojego projektu:
 
 ```
 [dependencies]
--> nidus => github twoje-konto/nidus
+-> nidus => newest
 ```
 
 Następnie w kodzie:
