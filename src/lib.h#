@@ -1,591 +1,137 @@
-use "std -> strings" from "str"
-use "std -> fmt"     from "fmt"
-use "std -> term"    from "term"
-use "std -> env"     from "env"
-use "std -> test"    from "test"
+mod nidus_diagnostic
+mod nidus_graphical
+mod nidus_machine
+mod nidus_outcome
+mod nidus_plain
+mod nidus_report
+mod nidus_severity
+mod nidus_span
+mod nidus_style
+mod nidus_text
+mod nidus_theme
+mod nidus_tests
 
-pub let VERSION: string = "0.2.0"
+pub let VERSION: string = "0.3.0"
 
 pub fn about() -> string is
     return "nidus v" + VERSION + " -- rozbudowana biblioteka diagnostyczna dla H#, inspirowana miette"
 end
 
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 1. SEVERITY — poziom istotności diagnostyki
-;; ═══════════════════════════════════════════════════════════════════════════
-
-enum Severity is
-    Error
-    Warning
-    Advice
-end
+;; ── Wrappery API (krótkie nazwy funkcji) ─────────────────────────────────
 
 ;; Stałe angielskie słowa (stabilne, używane w JSON / GitHub Actions —
 ;; formaty maszynowe/parsowalne, które NIE powinny być lokalizowane).
-pub fn severity_word_en(sev: Severity) -> string is
-    return match sev is
-        Severity::Error   => "error"
-        Severity::Warning => "warning"
-        Severity::Advice  => "advice"
-    end
+pub fn severity_word_en(sev: nidus_severity::Severity) -> string is
+    return nidus_severity::severity_word_en(sev)
 end
 
-fn sev_word_for(sev: Severity, w: Words) -> string is
-    return match sev is
-        Severity::Error   => w.error
-        Severity::Warning => w.warning
-        Severity::Advice  => w.advice
-    end
-end
-
-fn severity_color(sev: Severity, pal: Palette) -> string is
-    return match sev is
-        Severity::Error   => pal.error_c
-        Severity::Warning => pal.warning_c
-        Severity::Advice  => pal.advice_c
-    end
-end
-
-fn severity_icon(sev: Severity, cs: Charset) -> string is
-    return match sev is
-        Severity::Error   => cs.icon_error
-        Severity::Warning => cs.icon_warning
-        Severity::Advice  => cs.icon_advice
-    end
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 2. SPAN i LABEL — zakresy bajtowe wskazujące fragmenty kodu źródłowego
-;; ═══════════════════════════════════════════════════════════════════════════
-
-struct Span is
-    pub offset: int   ;; przesunięcie bajtowe od początku źródła (0-based)
-    pub len:    int   ;; długość zakresu w bajtach (minimum efektywnie 1)
-end
-
-pub fn span(offset: int, len: int) -> Span is
-    return Span { offset: offset, len: len }
+pub fn span(offset: int, len: int) -> nidus_span::Span is
+    return nidus_span::span(offset, len)
 end
 
 ;; Zakres wskazujący pojedynczy punkt (np. brakujący znak).
-pub fn point(offset: int) -> Span is
-    return Span { offset: offset, len: 1 }
+pub fn point(offset: int) -> nidus_span::Span is
+    return nidus_span::point(offset)
 end
 
-impl Span is
-    fn end_offset(self) -> int is
-        return self.offset + self.len
-    end
-
-    fn contains(self, o: int) -> bool is
-        return o >= self.offset && o < self.offset + self.len
-    end
+pub fn label(offset: int, len: int, text: string) -> nidus_span::Label is
+    return nidus_span::label(offset, len, text)
 end
 
-;; Etykieta — pojedyncze podświetlenie fragmentu kodu z opcjonalnym opisem.
-;; `primary`  = true  -> główna etykieta (kolor błędu, pogrubiona)
-;; `primary`  = false -> etykieta pomocnicza (kolor przygaszony)
-struct Label is
-    pub sp:      Span
-    pub text:    string
-    pub primary: bool
+pub fn label_at(offset: int, text: string) -> nidus_span::Label is
+    return nidus_span::label_at(offset, text)
 end
 
-pub fn label(offset: int, len: int, text: string) -> Label is
-    return Label { sp: span(offset, len), text: text, primary: false }
+pub fn primary_label(offset: int, len: int, text: string) -> nidus_span::Label is
+    return nidus_span::primary_label(offset, len, text)
 end
 
-pub fn label_at(offset: int, text: string) -> Label is
-    return Label { sp: point(offset), text: text, primary: false }
-end
-
-pub fn primary_label(offset: int, len: int, text: string) -> Label is
-    return Label { sp: span(offset, len), text: text, primary: true }
-end
-
-pub fn primary_label_at(offset: int, text: string) -> Label is
-    return Label { sp: point(offset), text: text, primary: true }
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 3. DIAGNOSTIC — rdzeń biblioteki: opis pojedynczego zgłoszenia
-;; ═══════════════════════════════════════════════════════════════════════════
-
-struct Diagnostic is
-    pub message:     string
-    pub code:        string       ;; np. "nidus::eval::div_zero" ("" jeśli brak)
-    pub severity:    Severity
-    pub help:        string       ;; sugestia naprawy ("" jeśli brak)
-    pub note:        string       ;; dodatkowy kontekst ("" jeśli brak)
-    pub url:         string       ;; link do dokumentacji ("" jeśli brak)
-    pub labels:      [Label]      ;; podświetlenia we fragmencie źródła
-    pub source_name: string       ;; nazwa pliku wyświetlana w nagłówku
-    pub source_code: string       ;; pełna treść źródła ("" -> brak fragmentu)
-    pub related:     [Diagnostic] ;; łańcuch powiązanych/przyczynowych błędów
-end
-
-fn empty_diagnostic(message: string) -> Diagnostic is
-    return Diagnostic {
-        message: message, code: "", severity: Severity::Error,
-        help: "", note: "", url: "", labels: [],
-        source_name: "", source_code: "", related: []
-    }
+pub fn primary_label_at(offset: int, text: string) -> nidus_span::Label is
+    return nidus_span::primary_label_at(offset, text)
 end
 
 ;; ── Konstruktory ─────────────────────────────────────────────────────────
-pub fn diagnostic(message: string) -> Diagnostic is
-    return empty_diagnostic(message)
+pub fn diagnostic(message: string) -> nidus_diagnostic::Diagnostic is
+    return nidus_diagnostic::diagnostic(message)
 end
 
-pub fn error(message: string) -> Diagnostic is
-    return empty_diagnostic(message)
+pub fn error(message: string) -> nidus_diagnostic::Diagnostic is
+    return nidus_diagnostic::error(message)
 end
 
-pub fn warning(message: string) -> Diagnostic is
-    let mut d: Diagnostic = empty_diagnostic(message)
-    d.severity = Severity::Warning
-    return d
+pub fn warning(message: string) -> nidus_diagnostic::Diagnostic is
+    return nidus_diagnostic::warning(message)
 end
 
-pub fn advice(message: string) -> Diagnostic is
-    let mut d: Diagnostic = empty_diagnostic(message)
-    d.severity = Severity::Advice
-    return d
-end
-
-;; ── Budowniczy (fluent builder) ──────────────────────────────────────────
-impl Diagnostic is
-    fn with_code(self, code: string) -> Diagnostic is
-        self.code = code
-        return self
-    end
-
-    fn with_severity(self, sev: Severity) -> Diagnostic is
-        self.severity = sev
-        return self
-    end
-
-    fn as_error(self) -> Diagnostic is
-        self.severity = Severity::Error
-        return self
-    end
-
-    fn as_warning(self) -> Diagnostic is
-        self.severity = Severity::Warning
-        return self
-    end
-
-    fn as_advice(self) -> Diagnostic is
-        self.severity = Severity::Advice
-        return self
-    end
-
-    fn with_help(self, help_text: string) -> Diagnostic is
-        self.help = help_text
-        return self
-    end
-
-    fn with_note(self, note_text: string) -> Diagnostic is
-        self.note = note_text
-        return self
-    end
-
-    fn with_url(self, url_text: string) -> Diagnostic is
-        self.url = url_text
-        return self
-    end
-
-    fn with_source(self, name: string, code: string) -> Diagnostic is
-        self.source_name = name
-        self.source_code = code
-        return self
-    end
-
-    fn with_label(self, l: Label) -> Diagnostic is
-        self.labels.push(l)
-        return self
-    end
-
-    fn with_related(self, other: Diagnostic) -> Diagnostic is
-        self.related.push(other)
-        return self
-    end
-
-    fn is_error(self) -> bool is
-        return match self.severity is
-            Severity::Error   => true
-            Severity::Warning => false
-            Severity::Advice  => false
-        end
-    end
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 4. NARZĘDZIA LINIA/KOLUMNA — konwersja offsetów bajtowych źródła
-;;
-;;    UWAGA: podobnie jak reszta łańcucha znaków w H#, operacje poniżej
-;;    działają na jednostkach bajtowych (tak jak `s[i..i+1]` w std/strings.h#).
-;;    Dla źródeł czysto ASCII kolumny są dokładne; dla wielobajtowego UTF-8
-;;    w kodzie źródłowym pod diagnostyką kolumny mogą się przesunąć — to
-;;    ograniczenie samego modelu stringów H#, nie tej biblioteki.
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn clamp_offset(offset: int, n: int) -> int is
-    if offset < 0 is return 0 end
-    if offset > n is return n end
-    return offset
+pub fn advice(message: string) -> nidus_diagnostic::Diagnostic is
+    return nidus_diagnostic::advice(message)
 end
 
 pub fn line_count(src: string) -> int is
-    let n: int = src.len()
-    let mut lines: int = 1
-    let mut i: int = 0
-    while i < n is
-        if src[i..i + 1] == "\n" is
-            lines += 1
-        end
-        i += 1
-    end
-    return lines
+    return nidus_text::line_count(src)
 end
 
 pub fn line_of_offset(src: string, offset: int) -> int is
-    let n: int = src.len()
-    let clamped: int = clamp_offset(offset, n)
-    let mut line: int = 1
-    let mut i: int = 0
-    while i < clamped is
-        if src[i..i + 1] == "\n" is
-            line += 1
-        end
-        i += 1
-    end
-    return line
+    return nidus_text::line_of_offset(src, offset)
 end
 
 pub fn col_of_offset(src: string, offset: int) -> int is
-    let n: int = src.len()
-    let clamped: int = clamp_offset(offset, n)
-    let mut col: int = 1
-    let mut i: int = clamped
-    while i > 0 is
-        i -= 1
-        if src[i..i + 1] == "\n" is
-            return col
-        end
-        col += 1
-    end
-    return col
-end
-
-fn strip_cr(s: string) -> string is
-    let n: int = s.len()
-    if n > 0 && s[n - 1..n] == "\r" is
-        return s[0..n - 1]
-    end
-    return s
+    return nidus_text::col_of_offset(src, offset)
 end
 
 ;; Zwraca treść pojedynczej linii (1-based, bez \n / \r).
 ;; Nieistniejący numer linii zwraca "".
 pub fn get_line_text(src: string, line_no: int) -> string is
-    let n: int = src.len()
-    let mut current: int = 1
-    let mut start: int = 0
-    let mut i: int = 0
-    while i <= n is
-        if i == n || src[i..i + 1] == "\n" is
-            if current == line_no is
-                return strip_cr(src[start..i])
-            end
-            current += 1
-            start = i + 1
-        end
-        i += 1
-    end
-    return ""
+    return nidus_text::get_line_text(src, line_no)
 end
 
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 5. THEME — zestawy znaków (Charset), palety kolorów (Palette)
-;;    oraz słowniki lokalizacyjne (Words), złożone w Theme.
-;; ═══════════════════════════════════════════════════════════════════════════
-
-struct Charset is
-    pub top_left:        string
-    pub h_bar:            string
-    pub v_bar:            string
-    pub bottom_left:      string
-    pub dot:              string
-    pub underline:        string
-    pub connector:        string
-    pub vbar_connector:   string
-    pub icon_error:       string
-    pub icon_warning:     string
-    pub icon_advice:      string
+pub fn words_en() -> nidus_theme::Words is
+    return nidus_theme::words_en()
 end
 
-fn charset_unicode() -> Charset is
-    return Charset {
-        top_left: "╭", h_bar: "─", v_bar: "│", bottom_left: "╰",
-        dot: "·", underline: "─", connector: "╰─▶", vbar_connector: "│",
-        icon_error: "×", icon_warning: "⚠", icon_advice: "☞"
-    }
+pub fn words_pl() -> nidus_theme::Words is
+    return nidus_theme::words_pl()
 end
 
-fn charset_ascii() -> Charset is
-    return Charset {
-        top_left: ",", h_bar: "-", v_bar: "|", bottom_left: "`",
-        dot: ":", underline: "^", connector: "`->", vbar_connector: "|",
-        icon_error: "x", icon_warning: "!", icon_advice: "i"
-    }
+pub fn theme_dark() -> nidus_theme::Theme is
+    return nidus_theme::theme_dark()
 end
 
-struct Palette is
-    pub error_c:     string
-    pub warning_c:   string
-    pub advice_c:    string
-    pub help_c:      string
-    pub note_c:      string
-    pub link_c:      string
-    pub dim_c:       string
-    pub bold_c:      string
-    pub reset:       string
-    ;; --- dodane w 0.2.0: pełne kolorowanie widoku ---
-    pub border_c:    string   ;; ramka: ╭─[ │ · ╰────
-    pub lineno_c:    string   ;; numery linii (linie z etykietami)
-    pub path_c:      string   ;; nazwa pliku w nagłówku fragmentu
-    pub pos_c:       string   ;; linia:kolumna
-    pub code_c:      string   ;; kod błędu oraz `fragmenty w backtickach`
-    pub secondary_c: string   ;; etykiety pomocnicze (nie-główne)
-end
-
-fn palette_dark() -> Palette is
-    return Palette {
-        error_c:   "\x1b[1;91m",
-        warning_c: "\x1b[1;93m",
-        advice_c:  "\x1b[1;96m",
-        help_c:    "\x1b[92m",
-        note_c:    "\x1b[94m",
-        link_c:    "\x1b[4;94m",
-        dim_c:     "\x1b[2m",
-        bold_c:    "\x1b[1m",
-        reset:     "\x1b[0m",
-        border_c:    "\x1b[90m",
-        lineno_c:    "\x1b[96m",
-        path_c:      "\x1b[1;97m",
-        pos_c:       "\x1b[93m",
-        code_c:      "\x1b[95m",
-        secondary_c: "\x1b[1;94m"
-    }
-end
-
-fn palette_light() -> Palette is
-    return Palette {
-        error_c:   "\x1b[1;31m",
-        warning_c: "\x1b[1;33m",
-        advice_c:  "\x1b[1;36m",
-        help_c:    "\x1b[32m",
-        note_c:    "\x1b[34m",
-        link_c:    "\x1b[4;34m",
-        dim_c:     "\x1b[90m",
-        bold_c:    "\x1b[1m",
-        reset:     "\x1b[0m",
-        border_c:    "\x1b[90m",
-        lineno_c:    "\x1b[34m",
-        path_c:      "\x1b[1;30m",
-        pos_c:       "\x1b[33m",
-        code_c:      "\x1b[35m",
-        secondary_c: "\x1b[1;34m"
-    }
-end
-
-fn palette_mono() -> Palette is
-    return Palette {
-        error_c: "", warning_c: "", advice_c: "", help_c: "", note_c: "",
-        link_c: "", dim_c: "", bold_c: "", reset: "",
-        border_c: "", lineno_c: "", path_c: "", pos_c: "", code_c: "", secondary_c: ""
-    }
-end
-
-;; Motyw "retro" — pokazuje, że palety mogą być dowolnym kolorem truecolor
-;; (\x1b[38;2;r;g;bm), nie tylko ośmioma klasycznymi kolorami ANSI.
-fn palette_retro() -> Palette is
-    return Palette {
-        error_c:   "\x1b[1m\x1b[38;2;255;70;130m",
-        warning_c: "\x1b[1m\x1b[38;2;255;180;60m",
-        advice_c:  "\x1b[1m\x1b[38;2;120;220;255m",
-        help_c:    "\x1b[38;2;140;255;170m",
-        note_c:    "\x1b[38;2;180;140;255m",
-        link_c:    "\x1b[4m\x1b[38;2;180;140;255m",
-        dim_c:     "\x1b[38;2;120;120;140m",
-        bold_c:    "\x1b[1m",
-        reset:     "\x1b[0m",
-        border_c:    "\x1b[38;2;90;90;125m",
-        lineno_c:    "\x1b[38;2;120;220;255m",
-        path_c:      "\x1b[1m\x1b[38;2;255;255;255m",
-        pos_c:       "\x1b[38;2;255;180;60m",
-        code_c:      "\x1b[38;2;255;120;220m",
-        secondary_c: "\x1b[1m\x1b[38;2;120;220;255m"
-    }
-end
-
-;; Słownik lokalizacyjny — pozwala renderować komunikaty w dowolnym języku
-;; bez dotykania logiki renderowania.
-struct Words is
-    pub error:     string
-    pub warning:   string
-    pub advice:    string
-    pub help:      string
-    pub note:      string
-    pub see:       string
-    pub caused_by: string
-end
-
-pub fn words_en() -> Words is
-    return Words {
-        error: "error", warning: "warning", advice: "advice",
-        help: "help", note: "note", see: "see", caused_by: "caused by"
-    }
-end
-
-pub fn words_pl() -> Words is
-    return Words {
-        error: "błąd", warning: "ostrzeżenie", advice: "porada",
-        help: "pomoc", note: "uwaga", see: "zobacz",
-        caused_by: "spowodowane przez"
-    }
-end
-
-struct Theme is
-    pub charset:           Charset
-    pub palette:           Palette
-    pub words:              Words
-    pub context_lines:     int    ;; ile linii kontekstu nad/pod etykietami
-    pub wrap_width:        int    ;; szerokość zawijania tekstu pomocy/uwag
-    pub show_line_numbers: bool
-end
-
-impl Theme is
-    fn with_words(self, w: Words) -> Theme is
-        self.words = w
-        return self
-    end
-
-    fn with_charset(self, c: Charset) -> Theme is
-        self.charset = c
-        return self
-    end
-
-    fn with_palette(self, p: Palette) -> Theme is
-        self.palette = p
-        return self
-    end
-
-    fn with_context(self, n: int) -> Theme is
-        self.context_lines = n
-        return self
-    end
-
-    fn with_wrap(self, n: int) -> Theme is
-        self.wrap_width = n
-        return self
-    end
-end
-
-;; ── Gotowe motywy ─────────────────────────────────────────────────────────
-
-pub fn theme_dark() -> Theme is
-    return Theme {
-        charset: charset_unicode(), palette: palette_dark(), words: words_en(),
-        context_lines: 1, wrap_width: 80, show_line_numbers: true
-    }
-end
-
-pub fn theme_light() -> Theme is
-    return Theme {
-        charset: charset_unicode(), palette: palette_light(), words: words_en(),
-        context_lines: 1, wrap_width: 80, show_line_numbers: true
-    }
+pub fn theme_light() -> nidus_theme::Theme is
+    return nidus_theme::theme_light()
 end
 
 ;; Bez unikodu (bezpieczne dla starszych terminali), ale wciąż kolorowe.
-pub fn theme_ascii() -> Theme is
-    return Theme {
-        charset: charset_ascii(), palette: palette_dark(), words: words_en(),
-        context_lines: 1, wrap_width: 80, show_line_numbers: true
-    }
+pub fn theme_ascii() -> nidus_theme::Theme is
+    return nidus_theme::theme_ascii()
 end
 
 ;; Bez kolorów i bez unikodu — najbezpieczniejszy motyw (logi, pliki, CI).
-pub fn theme_mono() -> Theme is
-    return Theme {
-        charset: charset_ascii(), palette: palette_mono(), words: words_en(),
-        context_lines: 1, wrap_width: 80, show_line_numbers: true
-    }
+pub fn theme_mono() -> nidus_theme::Theme is
+    return nidus_theme::theme_mono()
 end
 
 ;; Bez kolorów, ale z ładną grafiką unikodową (np. output przekierowany do
 ;; pliku na terminalu z UTF-8, gdzie kolor jest zbędny, ale znaki nie szkodzą).
-pub fn theme_mono_unicode() -> Theme is
-    return Theme {
-        charset: charset_unicode(), palette: palette_mono(), words: words_en(),
-        context_lines: 1, wrap_width: 80, show_line_numbers: true
-    }
+pub fn theme_mono_unicode() -> nidus_theme::Theme is
+    return nidus_theme::theme_mono_unicode()
 end
 
-pub fn theme_retro() -> Theme is
-    return Theme {
-        charset: charset_unicode(), palette: palette_retro(), words: words_en(),
-        context_lines: 2, wrap_width: 80, show_line_numbers: true
-    }
+pub fn theme_retro() -> nidus_theme::Theme is
+    return nidus_theme::theme_retro()
 end
 
 ;; Domyślny ciemny motyw, ale ze wszystkimi napisami po polsku.
-pub fn theme_polski() -> Theme is
-    let mut t: Theme = theme_dark()
-    t.words = words_pl()
-    return t
+pub fn theme_polski() -> nidus_theme::Theme is
+    return nidus_theme::theme_polski()
 end
 
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 6. STYLE i KONFIGURACJA — wybór formatu renderowania + autodetekcja
-;; ═══════════════════════════════════════════════════════════════════════════
-
-enum Style is
-    Graphical      ;; pełny, graficzny widok z fragmentem kodu (jak miette)
-    Ascii          ;; jak Graphical, ale wyłącznie znaki ASCII
-    Narratable     ;; opis liniowy, przyjazny czytnikom ekranu
-    Minimal        ;; jedna linia na wpis, w stylu kompilatora (grep-friendly)
-    Json           ;; wyjście maszynowe (JSON)
-    Markdown       ;; blok Markdown (np. do komentarzy w PR)
-    GithubActions  ;; adnotacje `::error/::warning::` GitHub Actions
-end
-
-pub fn style_name(s: Style) -> string is
-    return match s is
-        Style::Graphical     => "graphical"
-        Style::Ascii         => "ascii"
-        Style::Narratable    => "narratable"
-        Style::Minimal       => "minimal"
-        Style::Json          => "json"
-        Style::Markdown      => "markdown"
-        Style::GithubActions => "github"
-    end
+pub fn style_name(s: nidus_style::Style) -> string is
+    return nidus_style::style_name(s)
 end
 
 pub fn detect_unicode_support() -> bool is
-    let lang: string   = str::to_upper(env::get_or("LANG", ""))
-    let lc_all: string = str::to_upper(env::get_or("LC_ALL", ""))
-    let lc_ctype: string = str::to_upper(env::get_or("LC_CTYPE", ""))
-    return lang.contains("UTF-8") || lang.contains("UTF8") ||
-           lc_all.contains("UTF-8") || lc_all.contains("UTF8") ||
-           lc_ctype.contains("UTF-8") || lc_ctype.contains("UTF8")
-end
-
-fn env_flag_set(name: string) -> bool is
-    let v: string = env::get(name)
-    return v != "" && v != "0"
+    return nidus_style::detect_unicode_support()
 end
 
 ;; Kolejność decyzji (od najsilniejszej):
@@ -594,14 +140,7 @@ end
 ;;  3. CLICOLOR_FORCE / FORCE_COLOR -> kolory wymuszone
 ;;  4. terminal (TERM, nie "dumb") -> kolory
 pub fn detect_color_support() -> bool is
-    let ov: string = str::to_upper(env::get("NIDUS_COLOR"))
-    if ov == "ALWAYS" || ov == "1" || ov == "TRUE" || ov == "ON"  is return true end
-    if ov == "NEVER"  || ov == "0" || ov == "FALSE" || ov == "OFF" is return false end
-    if env::get("NO_COLOR") != "" is return false end
-    if env_flag_set("CLICOLOR_FORCE") || env_flag_set("FORCE_COLOR") is return true end
-    if !term::is_tty() is return false end
-    if env::get("TERM") == "dumb" is return false end
-    return true
+    return nidus_style::detect_color_support()
 end
 
 ;; Wybiera styl na podstawie środowiska:
@@ -610,957 +149,65 @@ end
 ;;  - stdout nie jest terminalem  -> Minimal (dobre do logów/grep)
 ;;  - terminal wspiera UTF-8      -> Graphical
 ;;  - w przeciwnym razie          -> Ascii
-pub fn auto_style() -> Style is
-    if env::get("GITHUB_ACTIONS") == "true" is return Style::GithubActions end
-
-    let forced: string = env::get("NIDUS_STYLE")
-    if forced == "graphical"  is return Style::Graphical end
-    if forced == "ascii"      is return Style::Ascii end
-    if forced == "narratable" is return Style::Narratable end
-    if forced == "minimal"    is return Style::Minimal end
-    if forced == "json"       is return Style::Json end
-    if forced == "markdown"   is return Style::Markdown end
-    if forced == "github"     is return Style::GithubActions end
-
-    ;; bez terminala i bez wymuszonego koloru -> zwięzły Minimal (logi/grep)
-    if !term::is_tty() && !detect_color_support() is return Style::Minimal end
-    if detect_unicode_support() is return Style::Graphical end
-    return Style::Ascii
+pub fn auto_style() -> nidus_style::Style is
+    return nidus_style::auto_style()
 end
 
-pub fn auto_theme() -> Theme is
-    if !detect_color_support() is
-        if detect_unicode_support() is return theme_mono_unicode() end
-        return theme_mono()
-    end
-    if detect_unicode_support() is return theme_dark() end
-    return theme_ascii()
+pub fn auto_theme() -> nidus_theme::Theme is
+    return nidus_style::auto_theme()
 end
 
-struct Config is
-    pub style: Style
-    pub theme: Theme
+pub fn config_default() -> nidus_style::Config is
+    return nidus_style::config_default()
 end
 
-pub fn config_default() -> Config is
-    return Config { style: auto_style(), theme: auto_theme() }
-end
-
-pub fn config_with(style: Style, theme: Theme) -> Config is
-    return Config { style: style, theme: theme }
+pub fn config_with(style: nidus_style::Style, theme: nidus_theme::Theme) -> nidus_style::Config is
+    return nidus_style::config_with(style, theme)
 end
 
 ;; Zawsze kolorowo: pełny widok graficzny z kolorami niezależnie od autodetekcji
 ;; (unikod, jeśli terminal go deklaruje; w przeciwnym razie ASCII).
-pub fn config_colored() -> Config is
-    if detect_unicode_support() is
-        return Config { style: Style::Graphical, theme: theme_dark() }
-    end
-    return Config { style: Style::Ascii, theme: theme_ascii() }
+pub fn config_colored() -> nidus_style::Config is
+    return nidus_style::config_colored()
 end
 
-impl Config is
-    fn with_style(self, s: Style) -> Config is
-        self.style = s
-        return self
-    end
-
-    fn with_theme(self, t: Theme) -> Config is
-        self.theme = t
-        return self
-    end
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 7. MAŁE POMOCNIKI WSPÓLNE
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn capitalize(s: string) -> string is
-    if s.len() == 0 is return s end
-    return str::to_upper(s[0..1]) + s[1..s.len()]
-end
-
-;; Owija tekst kolorem (nic nie robi, gdy kolor pusty — motywy mono).
-fn paint(color: string, text: string, pal: Palette) -> string is
-    if color == "" is return text end
-    return color + text + pal.reset
-end
-
-;; Koloruje fragmenty w `backtickach` (razem z backtickami). Po zamknięciu
-;; fragmentu przywraca styl `after` (np. pogrubienie wiadomości).
-;; Niedomknięty backtick -> tekst bez zmian.
-fn colorize_ticks(text: string, color: string, after: string, pal: Palette) -> string is
-    if color == "" is return text end
-    let parts: [string] = str::split(text, "`")
-    if parts.len() % 2 == 0 is return text end
-    let mut out: string = ""
-    let mut i: int = 0
-    while i < parts.len() is
-        if i % 2 == 1 is
-            out = out + color + "`" + parts[i] + "`" + pal.reset + after
-        else is
-            out = out + parts[i]
-        end
-        i += 1
-    end
-    return out
-end
-
-;; Zawija `text` do `width` znaków, dokleja `prefix` do pierwszej linii
-;; i `cont_indent` do kolejnych (przydatne dla "  help: ..." / "  note: ...").
-fn wrap_with_prefix(text: string, prefix: string, cont_indent: string, width: int) -> string is
-    let mut avail: int = width - cont_indent.len()
-    if avail < 20 is avail = 20 end
-    let wrapped: string  = fmt::wrap(text, avail)
-    let lines:   [string] = str::split(wrapped, "\n")
-    let mut out: string = ""
-    let mut i: int = 0
-    while i < lines.len() is
-        if i == 0 is
-            out = out + prefix + lines[i]
-        else is
-            out = out + "\n" + cont_indent + lines[i]
-        end
-        i += 1
-    end
-    return out
-end
-
-;; Odmiana polskich rzeczowników w liczbie mnogiej (1 / 2-4 / 5+).
-fn pluralize(n: int, one: string, few: string, many: string) -> string is
-    let mod10:  int = n % 10
-    let mod100: int = n % 100
-    if n == 1 is return one end
-    if mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14) is return few end
-    return many
-end
-
-fn json_escape(s: string) -> string is
-    let n: int = s.len()
-    let mut out: string = ""
-    let mut i: int = 0
-    while i < n is
-        let c: string = s[i..i + 1]
-        if c == "\"" is
-            out = out + "\\\""
-        elsif c == "\\" is
-            out = out + "\\\\"
-        elsif c == "\n" is
-            out = out + "\\n"
-        elsif c == "\r" is
-            out = out + "\\r"
-        elsif c == "\t" is
-            out = out + "\\t"
-        else is
-            out = out + c
-        end
-        i += 1
-    end
-    return out
-end
-
-;; Ucieczka danych zgodnie z formatem GitHub Actions workflow-command
-;; (kolejność ma znaczenie: `%` musi być zamienione jako pierwsze).
-fn gh_escape(s: string) -> string is
-    let s1: string = str::replace_all(s, "%", "%25")
-    let s2: string = str::replace_all(s1, "\r", "%0D")
-    let s3: string = str::replace_all(s2, "\n", "%0A")
-    return s3
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 8. STYL "GRAPHICAL" / "ASCII" — pełny, graficzny widok fragmentu kodu
-;; ═══════════════════════════════════════════════════════════════════════════
-
-;; Etykieta z wyliczoną kolumną startu/końca w obrębie jednej linii.
-struct Placed is
-    pub text:      string
-    pub primary:   bool
-    pub col_start: int
-    pub col_end:   int   ;; wyłącznie (exclusive)
-end
-
-fn sort_placed(arr: [Placed]) -> [Placed] is
-    let mut a: [Placed] = arr
-    let n: int = a.len()
-    let mut i: int = 1
-    while i < n is
-        let key: Placed = a[i]
-        let mut j: int = i - 1
-        while j >= 0 && a[j].col_start > key.col_start is
-            a[j + 1] = a[j]
-            j -= 1
-        end
-        a[j + 1] = key
-        i += 1
-    end
-    return a
-end
-
-fn labels_for_line(src: string, labels: [Label], line_no: int, line_len: int) -> [Placed] is
-    let mut result: [Placed] = []
-    for l in labels is
-        let ln: int = line_of_offset(src, l.sp.offset)
-        if ln == line_no is
-            let col: int = col_of_offset(src, l.sp.offset)
-            let mut seg_len: int = l.sp.len
-            if seg_len < 1 is seg_len = 1 end
-            let max_len: int = line_len - (col - 1)
-            if max_len < 1 is
-                seg_len = 1
-            elsif seg_len > max_len is
-                seg_len = max_len
-            end
-            result.push(Placed { text: l.text, primary: l.primary, col_start: col, col_end: col + seg_len })
-        end
-    end
-    return sort_placed(result)
-end
-
-fn label_color(primary: bool, sev_color: string, pal: Palette) -> string is
-    if primary is return sev_color end
-    return pal.secondary_c
-end
-
-;; Linia kodu z podświetlonymi (kolorem etykiety) fragmentami wskazanymi
-;; przez etykiety — dzięki temu błędne miejsce widać już w samym kodzie.
-;; Bez kolorów zwraca dokładnie `text`.
-fn highlight_line(text: string, placed: [Placed], sev_color: string, pal: Palette) -> string is
-    let n: int = text.len()
-    let mut out: string = ""
-    let mut cursor: int = 1
-    for p in placed is
-        let mut a: int = p.col_start
-        if a < cursor is a = cursor end
-        let mut b: int = p.col_end
-        if b > n + 1 is b = n + 1 end
-        if a <= n && b > a is
-            if a > cursor is out = out + text[cursor - 1..a - 1] end
-            out = out + paint(label_color(p.primary, sev_color, pal), text[a - 1..b - 1], pal)
-            cursor = b
-        end
-    end
-    if cursor <= n is out = out + text[cursor - 1..n] end
-    return out
-end
-
-fn render_snippet(d: Diagnostic, theme: Theme) -> string is
-    let src: string   = d.source_code
-    let cs:  Charset  = theme.charset
-    let pal: Palette  = theme.palette
-    let sev_color: string = severity_color(d.severity, pal)
-    let total_lines: int  = line_count(src)
-
-    let mut touched: [int] = []
-    for l in d.labels is
-        touched.push(line_of_offset(src, l.sp.offset))
-    end
-    if touched.len() == 0 is return "" end
-
-    let mut min_line: int = touched[0]
-    let mut max_line: int = touched[0]
-    for t in touched is
-        if t < min_line is min_line = t end
-        if t > max_line is max_line = t end
-    end
-    min_line = min_line - theme.context_lines
-    max_line = max_line + theme.context_lines
-    if min_line < 1 is min_line = 1 end
-    if max_line > total_lines is max_line = total_lines end
-
-    let mut gw: int = to_string(max_line).len()
-    if gw < 2 is gw = 2 end
-
-    let head_line: int = line_of_offset(src, d.labels[0].sp.offset)
-    let head_col:  int = col_of_offset(src, d.labels[0].sp.offset)
-
-    ;; przerywana pionowa kreska w gutterze oraz kropka w wierszach adnotacji
-    let gutter_dot: string = fmt::repeat(" ", gw + 1) + paint(pal.border_c, cs.dot, pal) + " "
-
-    ;; ╭──[plik:linia:kolumna]
-    let mut out: string = fmt::repeat(" ", gw + 1) + paint(pal.border_c, cs.top_left + cs.h_bar + cs.h_bar + "[", pal)
-    if d.source_name != "" is
-        out = out + paint(pal.path_c, d.source_name, pal) + paint(pal.border_c, ":", pal)
-    end
-    out = out + paint(pal.pos_c, to_string(head_line) + ":" + to_string(head_col), pal)
-    out = out + paint(pal.border_c, "]", pal) + "\n"
-
-    let mut line_no: int = min_line
-    while line_no <= max_line is
-        let text: string = get_line_text(src, line_no)
-        let placed: [Placed] = labels_for_line(src, d.labels, line_no, text.len())
-
-        ;; numer linii: wyraźny dla linii z etykietami, przygaszony dla kontekstu
-        let mut num_color: string = pal.border_c
-        let mut shown: string = text
-        if placed.len() > 0 is
-            num_color = pal.lineno_c
-            shown = highlight_line(text, placed, sev_color, pal)
-        end
-
-        if theme.show_line_numbers is
-            out = out + paint(num_color, fmt::pad_left(to_string(line_no), gw), pal) + " " + paint(pal.border_c, cs.v_bar, pal) + " " + shown + "\n"
-        else is
-            out = out + fmt::repeat(" ", gw) + " " + paint(pal.border_c, cs.v_bar, pal) + " " + shown + "\n"
-        end
-
-        if placed.len() > 0 is
-            ;; wiersz podkreśleń
-            let mut underline: string = gutter_dot
-            let mut cursor: int = 1
-            for p in placed is
-                if p.col_start > cursor is
-                    underline = underline + fmt::repeat(" ", p.col_start - cursor)
-                    cursor = p.col_start
-                end
-                let seg_len: int = p.col_end - p.col_start
-                let color:   string = label_color(p.primary, sev_color, pal)
-                underline = underline + paint(color, fmt::repeat(cs.underline, seg_len), pal)
-                cursor = p.col_end
-            end
-            out = out + underline + "\n"
-
-            ;; wiersze komunikatów (efekt schodkowy), od najbardziej wysuniętej
-            ;; w prawo etykiety do najbardziej wysuniętej w lewo
-            let mut idx: int = placed.len() - 1
-            while idx >= 0 is
-                let p: Placed = placed[idx]
-                if p.text != "" is
-                    let mut row: string = gutter_dot
-                    let mut c2: int = 1
-                    let mut j: int = 0
-                    while j < idx is
-                        let other: Placed = placed[j]
-                        if other.text != "" is
-                            if other.col_start > c2 is
-                                row = row + fmt::repeat(" ", other.col_start - c2)
-                                c2 = other.col_start
-                            end
-                            row = row + paint(label_color(other.primary, sev_color, pal), cs.vbar_connector, pal)
-                            c2 = c2 + 1
-                        end
-                        j += 1
-                    end
-                    if p.col_start > c2 is
-                        row = row + fmt::repeat(" ", p.col_start - c2)
-                    end
-                    row = row + paint(label_color(p.primary, sev_color, pal), cs.connector + " " + p.text, pal)
-                    out = out + row + "\n"
-                end
-                idx = idx - 1
-            end
-        end
-
-        line_no = line_no + 1
-    end
-
-    out = out + fmt::repeat(" ", gw + 1) + paint(pal.border_c, cs.bottom_left + fmt::repeat(cs.h_bar, 4), pal) + "\n"
-    return out
-end
-
-fn render_graphical(d: Diagnostic, theme: Theme) -> string is
-    let pal: Palette = theme.palette
-    let cs:  Charset = theme.charset
-    let w:   Words   = theme.words
-    let sev_color: string = severity_color(d.severity, pal)
-    let icon:      string = severity_icon(d.severity, cs)
-    let sev_word:  string = sev_word_for(d.severity, w)
-
-    ;;   × error[kod::bledu]: wiadomość z `fragmentem`
-    let mut out: string = "\n  " + paint(sev_color, icon + " " + sev_word, pal)
-    if d.code != "" is
-        out = out + paint(pal.border_c, "[", pal) + paint(pal.code_c, d.code, pal) + paint(pal.border_c, "]", pal)
-    end
-    out = out + paint(sev_color, ":", pal) + " "
-    out = out + pal.bold_c + colorize_ticks(d.message, pal.code_c, pal.bold_c, pal) + pal.reset + "\n"
-
-    if d.source_code != "" && d.labels.len() > 0 is
-        out = out + render_snippet(d, theme) + "\n"
-    elsif d.labels.len() > 0 is
-        for l in d.labels is
-            out = out + "    " + paint(label_color(l.primary, sev_color, pal), "->", pal) + " " + colorize_ticks(l.text, pal.code_c, "", pal) + "\n"
-        end
-        out = out + "\n"
-    end
-
-    if d.help != "" is
-        let hp: string = "  " + paint(pal.help_c, w.help + ":", pal) + " "
-        out = out + colorize_ticks(wrap_with_prefix(d.help, hp, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
-    end
-    if d.note != "" is
-        let np: string = "  " + paint(pal.note_c, w.note + ":", pal) + " "
-        out = out + colorize_ticks(wrap_with_prefix(d.note, np, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
-    end
-    if d.url != "" is
-        out = out + "   " + paint(pal.note_c, w.see + ":", pal) + " " + paint(pal.link_c, d.url, pal) + "\n"
-    end
-
-    if d.related.len() > 0 is
-        out = out + "  " + paint(pal.border_c, cs.connector, pal) + " " + paint(pal.dim_c, w.caused_by + ":", pal) + "\n"
-        for r in d.related is
-            out = out + fmt::indent(render_graphical(r, theme), 4) + "\n"
-        end
-    end
-
-    return out
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 9. STYL "NARRATABLE" — opis liniowy, przyjazny czytnikom ekranu
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn render_narratable(d: Diagnostic, theme: Theme) -> string is
-    let w:   Words   = theme.words
-    let pal: Palette = theme.palette
-    let sev_color: string = severity_color(d.severity, pal)
-    let mut out: string = paint(sev_color, capitalize(sev_word_for(d.severity, w)) + ":", pal) + " " + pal.bold_c + d.message + pal.reset + "\n"
-
-    if d.code != "" is
-        out = out + "    " + paint(pal.dim_c, "Kod:", pal) + " " + paint(pal.code_c, d.code, pal) + "\n"
-    end
-    out = out + "    " + paint(pal.dim_c, "Poziom:", pal) + " " + paint(sev_color, sev_word_for(d.severity, w), pal) + "\n"
-
-    if d.source_code != "" is
-        for l in d.labels is
-            let ln:   int    = line_of_offset(d.source_code, l.sp.offset)
-            let col:  int    = col_of_offset(d.source_code, l.sp.offset)
-            let text: string = get_line_text(d.source_code, ln)
-            out = out + "    " + paint(pal.dim_c, "Linia", pal) + " " + paint(pal.pos_c, to_string(ln), pal) + paint(pal.dim_c, ", kolumna", pal) + " " + paint(pal.pos_c, to_string(col), pal)
-            if d.source_name != "" is out = out + " (" + paint(pal.path_c, d.source_name, pal) + ")" end
-            out = out + ":\n"
-            out = out + "        " + str::trim(text) + "\n"
-            if l.text != "" is
-                out = out + "        " + paint(label_color(l.primary, sev_color, pal), "Etykieta:", pal) + " " + l.text + "\n"
-            end
-        end
-    end
-
-    if d.help != "" is out = out + paint(pal.help_c, w.help + ":", pal) + " " + d.help + "\n" end
-    if d.note != "" is out = out + paint(pal.note_c, w.note + ":", pal) + " " + d.note + "\n" end
-    if d.url  != "" is out = out + paint(pal.note_c, w.see  + ":", pal) + " " + paint(pal.link_c, d.url, pal) + "\n" end
-
-    if d.related.len() > 0 is
-        for r in d.related is
-            out = out + paint(pal.dim_c, w.caused_by + ":", pal) + "\n" + fmt::indent(render_narratable(r, theme), 4) + "\n"
-        end
-    end
-
-    return out
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 10. STYL "MINIMAL" — jedna linia na wpis, jak komunikaty kompilatora
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn loc_prefix(d: Diagnostic, line_no: int, col: int, pal: Palette) -> string is
-    if d.source_name != "" is
-        return paint(pal.path_c, d.source_name, pal) + paint(pal.border_c, ":", pal) +
-               paint(pal.pos_c, to_string(line_no) + ":" + to_string(col), pal)
-    end
-    return paint(pal.path_c, "nidus", pal)
-end
-
-fn render_minimal(d: Diagnostic, theme: Theme) -> string is
-    let w:   Words   = theme.words
-    let pal: Palette = theme.palette
-    let sev_color: string = severity_color(d.severity, pal)
-    let sev_word:  string = paint(sev_color, sev_word_for(d.severity, w), pal)
-    let msg:       string = pal.bold_c + colorize_ticks(d.message, pal.code_c, pal.bold_c, pal) + pal.reset
-    let code_suffix: string = if d.code != "" is " " + paint(pal.border_c, "[", pal) + paint(pal.code_c, d.code, pal) + paint(pal.border_c, "]", pal) else is "" end
-
-    let mut out: string = ""
-    if d.source_code != "" && d.labels.len() > 0 is
-        for l in d.labels is
-            let ln:     int    = line_of_offset(d.source_code, l.sp.offset)
-            let col:    int    = col_of_offset(d.source_code, l.sp.offset)
-            let prefix: string = loc_prefix(d, ln, col, pal)
-            if l.text != "" is
-                out = out + prefix + ": " + sev_word + ": " + msg + " " + paint(label_color(l.primary, sev_color, pal), "-- " + l.text, pal) + code_suffix + "\n"
-            else is
-                out = out + prefix + ": " + sev_word + ": " + msg + code_suffix + "\n"
-            end
-        end
-    else is
-        let prefix: string = if d.source_name != "" is paint(pal.path_c, d.source_name, pal) else is paint(pal.path_c, "nidus", pal) end
-        out = out + prefix + ": " + sev_word + ": " + msg + code_suffix + "\n"
-    end
-
-    if d.help != "" is out = out + "  " + paint(pal.help_c, w.help + ":", pal) + " " + d.help + "\n" end
-    if d.note != "" is out = out + "  " + paint(pal.note_c, w.note + ":", pal) + " " + d.note + "\n" end
-    if d.url  != "" is out = out + "  " + paint(pal.note_c, w.see  + ":", pal) + " " + paint(pal.link_c, d.url, pal) + "\n" end
-
-    for r in d.related is
-        out = out + render_minimal(r, theme)
-    end
-    return out
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 11. STYL "JSON" — wyjście maszynowe, stabilne pola (zawsze po angielsku)
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn render_json(d: Diagnostic) -> string is
-    let mut out: string = "{"
-    out = out + "\"severity\":\"" + severity_word_en(d.severity) + "\","
-    out = out + "\"code\":\""     + json_escape(d.code)          + "\","
-    out = out + "\"message\":\""  + json_escape(d.message)       + "\","
-    out = out + "\"help\":\""     + json_escape(d.help)          + "\","
-    out = out + "\"note\":\""     + json_escape(d.note)          + "\","
-    out = out + "\"url\":\""      + json_escape(d.url)           + "\","
-    out = out + "\"source_name\":\"" + json_escape(d.source_name) + "\","
-
-    out = out + "\"labels\":["
-    let mut i: int = 0
-    while i < d.labels.len() is
-        let l: Label = d.labels[i]
-        out = out + "{"
-        out = out + "\"offset\":"  + to_string(l.sp.offset) + ","
-        out = out + "\"length\":"  + to_string(l.sp.len)    + ","
-        out = out + "\"primary\":" + to_string(l.primary)   + ","
-        if d.source_code != "" is
-            out = out + "\"line\":"   + to_string(line_of_offset(d.source_code, l.sp.offset)) + ","
-            out = out + "\"column\":" + to_string(col_of_offset(d.source_code, l.sp.offset))   + ","
-        end
-        out = out + "\"message\":\"" + json_escape(l.text) + "\""
-        out = out + "}"
-        if i < d.labels.len() - 1 is out = out + "," end
-        i += 1
-    end
-    out = out + "],"
-
-    out = out + "\"related\":["
-    let mut j: int = 0
-    while j < d.related.len() is
-        out = out + render_json(d.related[j])
-        if j < d.related.len() - 1 is out = out + "," end
-        j += 1
-    end
-    out = out + "]"
-
-    out = out + "}"
-    return out
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 12. STYL "MARKDOWN" — blok Markdown, np. do komentarza w Pull Requeście
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn render_markdown(d: Diagnostic) -> string is
-    let mut out: string = "**" + capitalize(severity_word_en(d.severity)) + "**"
-    if d.code != "" is out = out + " `" + d.code + "`" end
-    out = out + ": " + d.message + "\n\n"
-
-    if d.source_code != "" && d.labels.len() > 0 is
-        out = out + "```\n"
-
-        let mut touched: [int] = []
-        for l in d.labels is touched.push(line_of_offset(d.source_code, l.sp.offset)) end
-        let mut min_l: int = touched[0]
-        let mut max_l: int = touched[0]
-        for t in touched is
-            if t < min_l is min_l = t end
-            if t > max_l is max_l = t end
-        end
-        min_l = min_l - 1
-        max_l = max_l + 1
-        if min_l < 1 is min_l = 1 end
-        let total: int = line_count(d.source_code)
-        if max_l > total is max_l = total end
-
-        let mut ln: int = min_l
-        while ln <= max_l is
-            out = out + fmt::pad_left(to_string(ln), 4) + " | " + get_line_text(d.source_code, ln) + "\n"
-            ln += 1
-        end
-        out = out + "```\n\n"
-
-        for l in d.labels is
-            if l.text != "" is
-                let ln2:  int = line_of_offset(d.source_code, l.sp.offset)
-                let col2: int = col_of_offset(d.source_code, l.sp.offset)
-                out = out + "- linia " + to_string(ln2) + ", kolumna " + to_string(col2) + ": " + l.text + "\n"
-            end
-        end
-        out = out + "\n"
-    end
-
-    if d.help != "" is out = out + "> **Pomoc:** " + d.help + "\n\n" end
-    if d.note != "" is out = out + "> **Uwaga:** " + d.note + "\n\n" end
-    if d.url  != "" is out = out + "[Zobacz dokumentację](" + d.url + ")\n\n" end
-
-    for r in d.related is
-        out = out + "---\n" + render_markdown(r)
-    end
-    return out
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 13. STYL "GITHUB ACTIONS" — adnotacje `::error/::warning/::notice::`
-;; ═══════════════════════════════════════════════════════════════════════════
-
-fn gh_command(sev: Severity) -> string is
-    return match sev is
-        Severity::Error   => "error"
-        Severity::Warning => "warning"
-        Severity::Advice  => "notice"
-    end
-end
-
-fn empty_label() -> Label is
-    return Label { sp: Span { offset: 0, len: 0 }, text: "", primary: false }
-end
-
-fn build_gh_body(d: Diagnostic, l: Label) -> string is
-    let mut body: string = d.message
-    if l.text != "" is body = body + " (" + l.text + ")" end
-    if d.help != "" is body = body + " | pomoc: " + d.help end
-    if d.note != "" is body = body + " | uwaga: " + d.note end
-    return body
-end
-
-fn render_github(d: Diagnostic) -> string is
-    let cmd: string = gh_command(d.severity)
-    let mut out: string = ""
-
-    if d.source_code != "" && d.labels.len() > 0 is
-        for l in d.labels is
-            let ln:  int = line_of_offset(d.source_code, l.sp.offset)
-            let col: int = col_of_offset(d.source_code, l.sp.offset)
-            out = out + "::" + cmd
-            if d.source_name != "" is
-                out = out + " file=" + d.source_name + ",line=" + to_string(ln) + ",col=" + to_string(col)
-            end
-            out = out + ",title=" + gh_escape(d.message)
-            out = out + "::" + gh_escape(build_gh_body(d, l)) + "\n"
-        end
-    else is
-        out = out + "::" + cmd + " title=" + gh_escape(d.message) + "::" + gh_escape(build_gh_body(d, empty_label())) + "\n"
-    end
-
-    for r in d.related is
-        out = out + render_github(r)
-    end
-    return out
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 14. PUBLICZNE API — dispatcher stylów, raportowanie, zbiorcze podsumowania
-;; ═══════════════════════════════════════════════════════════════════════════
-
-pub fn render(d: Diagnostic, cfg: Config) -> string is
-    return match cfg.style is
-        Style::Graphical     => render_graphical(d, cfg.theme)
-        Style::Ascii         => render_graphical(d, cfg.theme.with_charset(charset_ascii()))
-        Style::Narratable    => render_narratable(d, cfg.theme)
-        Style::Minimal       => render_minimal(d, cfg.theme)
-        Style::Json          => render_json(d)
-        Style::Markdown      => render_markdown(d)
-        Style::GithubActions => render_github(d)
-    end
+pub fn render(d: nidus_diagnostic::Diagnostic, cfg: nidus_style::Config) -> string is
+    return nidus_report::render(d, cfg)
 end
 
 ;; Wypisuje diagnostykę na stdout, z automatycznie dobraną konfiguracją.
-pub fn report(d: Diagnostic) is
-    write(render(d, config_default()))
+pub fn report(d: nidus_diagnostic::Diagnostic) is
+    nidus_report::report(d)
 end
 
 ;; Wypisuje diagnostykę z jawnie podaną konfiguracją (styl + motyw).
-pub fn report_with(d: Diagnostic, cfg: Config) is
-    write(render(d, cfg))
-end
-
-fn exit_code_for(sev: Severity) -> int is
-    return match sev is
-        Severity::Error   => 1
-        Severity::Warning => 0
-        Severity::Advice  => 0
-    end
+pub fn report_with(d: nidus_diagnostic::Diagnostic, cfg: nidus_style::Config) is
+    nidus_report::report_with(d, cfg)
 end
 
 ;; Wypisuje diagnostykę i kończy proces (kod 1 dla błędu, 0 dla reszty).
-pub fn die(d: Diagnostic) is
-    report(d)
-    exit(exit_code_for(d.severity))
+pub fn die(d: nidus_diagnostic::Diagnostic) is
+    nidus_report::die(d)
 end
 
-pub fn die_with(d: Diagnostic, cfg: Config) is
-    report_with(d, cfg)
-    exit(exit_code_for(d.severity))
-end
-
-fn summarize_with(ds: [Diagnostic], pal: Palette) -> string is
-    let mut errors:   int = 0
-    let mut warnings: int = 0
-    let mut advices:  int = 0
-    for d in ds is
-        match d.severity is
-            Severity::Error   => errors   += 1
-            Severity::Warning => warnings += 1
-            Severity::Advice  => advices  += 1
-        end
-    end
-
-    let mut parts: [string] = []
-    if errors > 0 is
-        parts.push(paint(pal.error_c, to_string(errors) + " " + pluralize(errors, "błąd", "błędy", "błędów"), pal))
-    end
-    if warnings > 0 is
-        parts.push(paint(pal.warning_c, to_string(warnings) + " " + pluralize(warnings, "ostrzeżenie", "ostrzeżenia", "ostrzeżeń"), pal))
-    end
-    if advices > 0 is
-        parts.push(paint(pal.advice_c, to_string(advices) + " " + pluralize(advices, "porada", "porady", "porad"), pal))
-    end
-    if parts.len() == 0 is return "Brak zgłoszonych diagnostyk." end
-    return str::join(parts, paint(pal.border_c, ", ", pal))
+pub fn die_with(d: nidus_diagnostic::Diagnostic, cfg: nidus_style::Config) is
+    nidus_report::die_with(d, cfg)
 end
 
 ;; Zwraca zdanie podsumowujące listę diagnostyk, np.
 ;; "2 błędy, 1 ostrzeżenie" (czysty tekst, bez kolorów).
-pub fn summarize(ds: [Diagnostic]) -> string is
-    return summarize_with(ds, palette_mono())
+pub fn summarize(ds: [nidus_diagnostic::Diagnostic]) -> string is
+    return nidus_report::summarize(ds)
 end
 
 ;; To samo, ale pokolorowane paletą z motywu (błędy czerwone, ostrzeżenia
 ;; żółte, porady cyjan). Dla motywów mono daje czysty tekst.
-pub fn summarize_colored(ds: [Diagnostic], theme: Theme) -> string is
-    return summarize_with(ds, theme.palette)
-end
-
-;; Czy dany styl to widok dla człowieka (a więc może być kolorowy)?
-fn style_is_human(s: Style) -> bool is
-    return match s is
-        Style::Graphical     => true
-        Style::Ascii         => true
-        Style::Narratable    => true
-        Style::Minimal       => true
-        Style::Json          => false
-        Style::Markdown      => false
-        Style::GithubActions => false
-    end
+pub fn summarize_colored(ds: [nidus_diagnostic::Diagnostic], theme: nidus_theme::Theme) -> string is
+    return nidus_report::summarize_colored(ds, theme)
 end
 
 ;; Wypisuje wszystkie diagnostyki, a na końcu jedno zbiorcze podsumowanie
 ;; (kolorowe w stylach przeznaczonych dla człowieka).
-pub fn print_all(ds: [Diagnostic], cfg: Config) is
-    for d in ds is
-        write(render(d, cfg))
-    end
-    write("")
-    if style_is_human(cfg.style) is
-        write(summarize_colored(ds, cfg.theme))
-    else is
-        write(summarize(ds))
-    end
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 15. OUTCOME<T> — lekki, opcjonalny odpowiednik Result<T, Diagnostic>
-;;
-;;     Biblioteka nie narzuca tego typu — funkcje mogą równie dobrze zwracać
-;;     `T?` i korzystać z operatora `?`. Outcome<T> jest wygodny, gdy chcesz
-;;     przenieść pełną diagnostykę (a nie tylko `nil`) w wartości zwracanej.
-;;
-;;     Użycie (we własnej funkcji, z jawnym typem zwracanym):
-;;         fn parse(s: string) -> Outcome<int> is
-;;             if !s.is_numeric() is
-;;                 return Outcome::Failure(nidus::error("nie liczba"))
-;;             end
-;;             return Outcome::Success(conv::str_to_int(s))
-;;         end
-;; ═══════════════════════════════════════════════════════════════════════════
-
-enum Outcome<T> is
-    Success(T)
-    Failure(Diagnostic)
-end
-
-;; ═══════════════════════════════════════════════════════════════════════════
-;; 16. TESTY WEWNĘTRZNE
-;; ═══════════════════════════════════════════════════════════════════════════
-
-#[test]
-fn test_span_basic() is
-    let s: Span = span(10, 5)
-    assert_eq(s.end_offset(), 15)
-    assert_true(s.contains(10))
-    assert_true(s.contains(14))
-    assert_true(!s.contains(15))
-end
-
-#[test]
-fn test_line_col_conversion() is
-    let src: string = "abc\ndef\nghi"
-    assert_eq(line_of_offset(src, 0), 1)
-    assert_eq(line_of_offset(src, 4), 2)
-    assert_eq(line_of_offset(src, 8), 3)
-    assert_eq(col_of_offset(src, 4), 1)
-    assert_eq(col_of_offset(src, 6), 3)
-    assert_eq(line_count(src), 3)
-end
-
-#[test]
-fn test_get_line_text() is
-    let src: string = "let x = 1\nlet y = 2\n"
-    assert_eq(get_line_text(src, 1), "let x = 1")
-    assert_eq(get_line_text(src, 2), "let y = 2")
-end
-
-#[test]
-fn test_diagnostic_builder() is
-    let mut d: Diagnostic = error("coś poszło nie tak")
-    d = d.with_code("nidus::test::demo")
-    d = d.with_help("spróbuj ponownie")
-    d = d.with_label(primary_label(4, 3, "tutaj"))
-
-    assert_eq(d.message, "coś poszło nie tak")
-    assert_eq(d.code, "nidus::test::demo")
-    assert_eq(d.help, "spróbuj ponownie")
-    assert_eq(d.labels.len(), 1)
-    assert_true(d.is_error())
-end
-
-#[test]
-fn test_severity_constructors() is
-    let w: Diagnostic = warning("uwaga")
-    let a: Diagnostic = advice("porada")
-    assert_true(!w.is_error())
-    assert_true(!a.is_error())
-end
-
-#[test]
-fn test_render_all_styles_nonempty() is
-    let mut d: Diagnostic = error("dzielenie przez zero")
-    d = d.with_code("nidus::eval::div_zero")
-    d = d.with_source("main.ns", "let y = x / 0\n")
-    d = d.with_label(primary_label(8, 5, "tu nie można dzielić przez zero"))
-    d = d.with_help("sprawdź mianownik przed dzieleniem")
-
-    let styles: [Style] = [
-        Style::Graphical, Style::Ascii, Style::Narratable,
-        Style::Minimal, Style::Json, Style::Markdown, Style::GithubActions
-    ]
-    for s in styles is
-        let cfg: Config = config_with(s, theme_mono())
-        let out: string = render(d, cfg)
-        assert_true(out.len() > 0)
-    end
-end
-
-#[test]
-fn test_json_escaping() is
-    let d: Diagnostic = error("z \"cudzysłowem\" i\nnową linią")
-    let out: string = render_json(d)
-    assert_true(out.contains("\\\""))
-    assert_true(out.contains("\\n"))
-end
-
-#[test]
-fn test_summarize() is
-    let ds: [Diagnostic] = [error("a"), error("b"), warning("c")]
-    let summary: string = summarize(ds)
-    assert_true(summary.contains("2 błędy"))
-    assert_true(summary.contains("1 ostrzeżenie"))
-end
-
-#[test]
-fn test_related_chain() is
-    let cause: Diagnostic = error("plik nie istnieje").with_code("nidus::io::not_found")
-    let mut root: Diagnostic = error("nie udało się wczytać konfiguracji")
-    root = root.with_related(cause)
-
-    assert_eq(root.related.len(), 1)
-    assert_eq(root.related[0].code, "nidus::io::not_found")
-
-    let out: string = render(root, config_with(Style::Narratable, theme_polski()))
-    assert_true(out.contains("spowodowane przez"))
-end
-
-#[test]
-fn test_custom_theme_words() is
-    let t: Theme = theme_dark().with_words(words_pl())
-    assert_eq(t.words.error, "błąd")
-    assert_eq(t.words.help, "pomoc")
-end
-
-;; ── testy kolorów (0.2.0) ─────────────────────────────────────────────────
-
-fn sample_diag() -> Diagnostic is
-    let mut d: Diagnostic = error("nieznana zmienna `c`")
-    d = d.with_code("nidus::resolve::unknown_ident")
-    d = d.with_source("add.ns", "fn add(a: int, b: int) -> int is\n    return a + c\nend\n")
-    d = d.with_label(primary_label(48, 1, "brak takiej zmiennej"))
-    d = d.with_label(label(15, 1, "czy chodziło o `b`?"))
-    d = d.with_help("sprawdź literówki w `nazwach`")
-    d = d.with_url("https://example.com/e")
-    return d
-end
-
-#[test]
-fn test_colors_present_in_dark_theme() is
-    let out: string = render(sample_diag(), config_with(Style::Graphical, theme_dark()))
-    assert_true(out.contains("\x1b[1;91m"))   ;; kolor błędu
-    assert_true(out.contains("\x1b[95m"))     ;; kod błędu / `backticki`
-    assert_true(out.contains("\x1b[96m"))     ;; numer linii z etykietą
-end
-
-#[test]
-fn test_mono_theme_has_no_escape_codes() is
-    let styles: [Style] = [Style::Graphical, Style::Ascii, Style::Narratable, Style::Minimal]
-    for st in styles is
-        let out: string = render(sample_diag(), config_with(st, theme_mono()))
-        assert_true(!out.contains("\x1b"))
-    end
-end
-
-#[test]
-fn test_colors_do_not_change_layout() is
-    ;; po zdjęciu sekwencji ANSI widok kolorowy == widok bez kolorów
-    let colored: string = render(sample_diag(), config_with(Style::Graphical, theme_dark()))
-    let plain:   string = render(sample_diag(), config_with(Style::Graphical, theme_mono_unicode()))
-    assert_eq(fmt::strip_ansi(colored), plain)
-
-    let colored_min: string = render(sample_diag(), config_with(Style::Minimal, theme_dark()))
-    let plain_min:   string = render(sample_diag(), config_with(Style::Minimal, theme_mono()))
-    assert_eq(fmt::strip_ansi(colored_min), plain_min)
-end
-
-#[test]
-fn test_highlight_line() is
-    let pal: Palette = palette_dark()
-    let placed: [Placed] = [Placed { text: "x", primary: true, col_start: 5, col_end: 8 }]
-    let out: string = highlight_line("abcdefghij", placed, pal.error_c, pal)
-    assert_eq(fmt::strip_ansi(out), "abcdefghij")
-    assert_true(out.contains(pal.error_c + "efg" + pal.reset))
-    ;; bez kolorów — dokładnie ten sam tekst
-    let mono: Palette = palette_mono()
-    assert_eq(highlight_line("abcdefghij", placed, "", mono), "abcdefghij")
-end
-
-#[test]
-fn test_colorize_ticks() is
-    let pal: Palette = palette_dark()
-    let out: string = colorize_ticks("użyj `foo()` teraz", pal.code_c, "", pal)
-    assert_eq(fmt::strip_ansi(out), "użyj `foo()` teraz")
-    assert_true(out.contains(pal.code_c + "`foo()`" + pal.reset))
-    ;; niedomknięty backtick zostaje bez zmian
-    assert_eq(colorize_ticks("a `b", pal.code_c, "", pal), "a `b")
-    ;; mono — bez zmian
-    assert_eq(colorize_ticks("a `b` c", "", "", palette_mono()), "a `b` c")
-end
-
-#[test]
-fn test_ascii_style_uses_ascii_charset() is
-    let out: string = render(sample_diag(), config_with(Style::Ascii, theme_mono_unicode()))
-    assert_true(!out.contains("╭"))
-    assert_true(!out.contains("│"))
-end
-
-#[test]
-fn test_summarize_colored() is
-    let ds: [Diagnostic] = [error("a"), warning("c")]
-    let plain: string = summarize_colored(ds, theme_mono())
-    assert_eq(plain, summarize(ds))
-    let col: string = summarize_colored(ds, theme_dark())
-    assert_eq(fmt::strip_ansi(col), summarize(ds))
-    assert_true(col.contains("\x1b"))
+pub fn print_all(ds: [nidus_diagnostic::Diagnostic], cfg: nidus_style::Config) is
+    nidus_report::print_all(ds, cfg)
 end
