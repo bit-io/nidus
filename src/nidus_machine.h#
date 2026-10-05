@@ -1,0 +1,137 @@
+use "std -> fmt"     from "fmt"
+
+mod nidus_diagnostic
+mod nidus_severity
+mod nidus_span
+mod nidus_text
+
+pub fn render_json(d: nidus_diagnostic::Diagnostic) -> string is
+    let mut out: string = "{"
+    out = out + "\"severity\":\"" + nidus_severity::severity_word_en(d.severity) + "\","
+    out = out + "\"code\":\""     + nidus_text::json_escape(d.code)          + "\","
+    out = out + "\"message\":\""  + nidus_text::json_escape(d.message)       + "\","
+    out = out + "\"help\":\""     + nidus_text::json_escape(d.help)          + "\","
+    out = out + "\"note\":\""     + nidus_text::json_escape(d.note)          + "\","
+    out = out + "\"url\":\""      + nidus_text::json_escape(d.url)           + "\","
+    out = out + "\"source_name\":\"" + nidus_text::json_escape(d.source_name) + "\","
+
+    out = out + "\"labels\":["
+    let mut i: int = 0
+    while i < d.labels.len() is
+        let l: nidus_span::Label = d.labels[i]
+        out = out + "{"
+        out = out + "\"offset\":"  + to_string(l.sp.offset) + ","
+        out = out + "\"length\":"  + to_string(l.sp.len)    + ","
+        out = out + "\"primary\":" + to_string(l.primary)   + ","
+        if d.source_code != "" is
+            out = out + "\"line\":"   + to_string(line_of_offset(d.source_code, l.sp.offset)) + ","
+            out = out + "\"column\":" + to_string(col_of_offset(d.source_code, l.sp.offset))   + ","
+        end
+        out = out + "\"message\":\"" + nidus_text::json_escape(l.text) + "\""
+        out = out + "}"
+        if i < d.labels.len() - 1 is out = out + "," end
+        i += 1
+    end
+    out = out + "],"
+
+    out = out + "\"related\":["
+    let mut j: int = 0
+    while j < d.related.len() is
+        out = out + render_json(d.related[j])
+        if j < d.related.len() - 1 is out = out + "," end
+        j += 1
+    end
+    out = out + "]"
+
+    out = out + "}"
+    return out
+end
+
+pub fn render_markdown(d: nidus_diagnostic::Diagnostic) -> string is
+    let mut out: string = "**" + nidus_text::capitalize(severity_word_en(d.severity)) + "**"
+    if d.code != "" is out = out + " `" + d.code + "`" end
+    out = out + ": " + d.message + "\n\n"
+
+    if d.source_code != "" && d.labels.len() > 0 is
+        out = out + "```\n"
+
+        let mut touched: [int] = []
+        for l in d.labels is touched.push(nidus_text::line_of_offset(d.source_code, l.sp.offset)) end
+        let mut min_l: int = touched[0]
+        let mut max_l: int = touched[0]
+        for t in touched is
+            if t < min_l is min_l = t end
+            if t > max_l is max_l = t end
+        end
+        min_l = min_l - 1
+        max_l = max_l + 1
+        if min_l < 1 is min_l = 1 end
+        let total: int = nidus_text::line_count(d.source_code)
+        if max_l > total is max_l = total end
+
+        let mut ln: int = min_l
+        while ln <= max_l is
+            out = out + fmt::pad_left(to_string(ln), 4) + " | " + nidus_text::get_line_text(d.source_code, ln) + "\n"
+            ln += 1
+        end
+        out = out + "```\n\n"
+
+        for l in d.labels is
+            if l.text != "" is
+                let ln2:  int = nidus_text::line_of_offset(d.source_code, l.sp.offset)
+                let col2: int = nidus_text::col_of_offset(d.source_code, l.sp.offset)
+                out = out + "- linia " + to_string(ln2) + ", kolumna " + to_string(col2) + ": " + l.text + "\n"
+            end
+        end
+        out = out + "\n"
+    end
+
+    if d.help != "" is out = out + "> **Pomoc:** " + d.help + "\n\n" end
+    if d.note != "" is out = out + "> **Uwaga:** " + d.note + "\n\n" end
+    if d.url  != "" is out = out + "[Zobacz dokumentację](" + d.url + ")\n\n" end
+
+    for r in d.related is
+        out = out + "---\n" + render_markdown(r)
+    end
+    return out
+end
+
+pub fn gh_command(sev: nidus_severity::Severity) -> string is
+    let i: int = nidus_severity::index(sev)
+    if i == 0 is return "error" end
+    if i == 1 is return "warning" end
+    return "notice"
+end
+
+pub fn build_gh_body(d: nidus_diagnostic::Diagnostic, l: nidus_span::Label) -> string is
+    let mut body: string = d.message
+    if l.text != "" is body = body + " (" + l.text + ")" end
+    if d.help != "" is body = body + " | pomoc: " + d.help end
+    if d.note != "" is body = body + " | uwaga: " + d.note end
+    return body
+end
+
+pub fn render_github(d: nidus_diagnostic::Diagnostic) -> string is
+    let cmd: string = gh_command(d.severity)
+    let mut out: string = ""
+
+    if d.source_code != "" && d.labels.len() > 0 is
+        for l in d.labels is
+            let ln:  int = nidus_text::line_of_offset(d.source_code, l.sp.offset)
+            let col: int = nidus_text::col_of_offset(d.source_code, l.sp.offset)
+            out = out + "::" + cmd
+            if d.source_name != "" is
+                out = out + " file=" + d.source_name + ",line=" + to_string(ln) + ",col=" + to_string(col)
+            end
+            out = out + ",title=" + nidus_text::gh_escape(d.message)
+            out = out + "::" + nidus_text::gh_escape(build_gh_body(d, l)) + "\n"
+        end
+    else is
+        out = out + "::" + cmd + " title=" + nidus_text::gh_escape(d.message) + "::" + nidus_text::gh_escape(build_gh_body(d, nidus_span::empty_label())) + "\n"
+    end
+
+    for r in d.related is
+        out = out + render_github(r)
+    end
+    return out
+end
