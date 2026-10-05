@@ -209,3 +209,19 @@ fn test_style_index_roundtrip() is
     end
     assert_eq(nidus_style::style_name(nidus_style::github_actions()), "github")
 end
+
+;; ── regresje 0.3.1 ────────────────────────────────────────────────────────
+
+#[test]
+fn test_severity_words() is
+    assert_eq(nidus_severity::severity_word_en(nidus_severity::error_level()), "error")
+    assert_eq(nidus_severity::severity_word_en(nidus_severity::warning_level()), "warning")
+    assert_eq(nidus_severity::index(nidus_severity::advice_level()), 2)
+end
+
+#[test]
+fn test_github_without_source_name() is
+    let d: nidus_diagnostic::Diagnostic = nidus_diagnostic::error("a, b: c")
+    let out: string = nidus_machine::render_github(d)
+    assert_true(out.contains("::error title=a%2C b%3A c::"))
+end
