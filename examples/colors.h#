@@ -6,7 +6,7 @@ use "bit -> nidus" from "nidus"
 fn main() is
     let src: string = "let port = cfg.port\nlet host = cfg.hots\nrun(host, port)\n"
 
-    let mut e: nidus::Diagnostic = nidus::error("nieznany klucz `hots`")
+    let mut e: nidus::diagnostic::Diagnostic = nidus::error("nieznany klucz `hots`")
     e = e.with_code("nidus::config::unknown_key")
     e = e.with_source("main.ns", src)
     e = e.with_label(nidus::primary_label(35, 4, "taki klucz nie istnieje"))
@@ -14,27 +14,27 @@ fn main() is
     e = e.with_help("czy chodziło o `host`?")
     e = e.with_url("https://example.com/docs/config")
 
-    let mut w: nidus::Diagnostic = nidus::warning("zmienna `port` jest używana tylko raz")
+    let mut w: nidus::diagnostic::Diagnostic = nidus::warning("zmienna `port` jest używana tylko raz")
     w = w.with_code("nidus::lint::single_use")
     w = w.with_source("main.ns", src)
     w = w.with_label(nidus::primary_label(4, 4, "zadeklarowana tutaj"))
     w = w.with_note("to tylko ostrzeżenie — program się skompiluje")
 
-    let a: nidus::Diagnostic = nidus::advice("możesz użyć skróconego zapisu").with_help("zamień na `run(cfg.host, cfg.port)`")
+    let a: nidus::diagnostic::Diagnostic = nidus::advice("możesz użyć skróconego zapisu").with_help("zamień na `run(cfg.host, cfg.port)`")
 
-    let ds: [nidus::Diagnostic] = [e, w, a]
+    let ds: [nidus::diagnostic::Diagnostic] = [e, w, a]
 
     write("=== theme_dark ===")
-    nidus::print_all(ds, nidus::config_with(nidus::Style::Graphical, nidus::theme_dark()))
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_dark()))
 
     write("=== theme_light ===")
-    nidus::print_all(ds, nidus::config_with(nidus::Style::Graphical, nidus::theme_light()))
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_light()))
 
     write("=== theme_retro (truecolor) ===")
-    nidus::print_all(ds, nidus::config_with(nidus::Style::Graphical, nidus::theme_retro()))
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_retro()))
 
     write("=== minimal (też kolorowy) ===")
-    nidus::print_all(ds, nidus::config_with(nidus::Style::Minimal, nidus::theme_dark()))
+    nidus::print_all(ds, nidus::config_with(nidus::style::minimal(), nidus::theme_dark()))
 
     write("=== zawsze kolorowo, niezależnie od autodetekcji ===")
     nidus::print_all(ds, nidus::config_colored())
