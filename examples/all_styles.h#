@@ -10,7 +10,9 @@ fn main() is
     d = d.with_help("dodaj `port = 8080` do sekcji [server]")
     d = d.with_url("https://example.com/docs/config#port")
 
-    let theme: nidus::Theme = nidus::theme_mono()   ;; bez kolorów — czytelnie w każdym terminalu
+    ;; kolorowy motyw — style dla człowieka (graphical/ascii/narratable/minimal) dostają kolory,
+    ;; json/markdown/github zawsze są czystym tekstem. Chcesz bez kolorów? nidus::theme_mono()
+    let theme: nidus::Theme = nidus::theme_dark()
 
     write("=== graphical ===")
     nidus::report_with(d, nidus::config_with(nidus::Style::Graphical, theme))
