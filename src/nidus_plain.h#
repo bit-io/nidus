@@ -9,7 +9,7 @@ pub fn render_narratable(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Th
     let w:   nidus_theme::Words   = theme.words
     let pal: nidus_theme::Palette = theme.palette
     let sev_color: string = nidus_theme::severity_color(d.severity, pal)
-    let mut out: string = nidus_theme::paint(sev_color, nidus_text::capitalize(sev_word_for(d.severity, w)) + ":", pal) + " " + pal.bold_c + d.message + pal.reset + "\n"
+    let mut out: string = nidus_theme::paint(sev_color, nidus_text::capitalize(nidus_theme::sev_word_for(d.severity, w)) + ":", pal) + " " + pal.bold_c + d.message + pal.reset + "\n"
 
     if d.code != "" is
         out = out + "    " + nidus_theme::paint(pal.dim_c, "Kod:", pal) + " " + nidus_theme::paint(pal.code_c, d.code, pal) + "\n"
@@ -26,7 +26,7 @@ pub fn render_narratable(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Th
             out = out + ":\n"
             out = out + "        " + str::trim(text) + "\n"
             if l.text != "" is
-                out = out + "        " + nidus_theme::paint(label_color(l.primary, sev_color, pal), "Etykieta:", pal) + " " + l.text + "\n"
+                out = out + "        " + nidus_theme::paint(nidus_theme::label_color(l.primary, sev_color, pal), "Etykieta:", pal) + " " + l.text + "\n"
             end
         end
     end
@@ -67,7 +67,7 @@ pub fn render_minimal(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
             let col:    int    = nidus_text::col_of_offset(d.source_code, l.sp.offset)
             let prefix: string = loc_prefix(d, ln, col, pal)
             if l.text != "" is
-                out = out + prefix + ": " + sev_word + ": " + msg + " " + nidus_theme::paint(label_color(l.primary, sev_color, pal), "-- " + l.text, pal) + code_suffix + "\n"
+                out = out + prefix + ": " + sev_word + ": " + msg + " " + nidus_theme::paint(nidus_theme::label_color(l.primary, sev_color, pal), "-- " + l.text, pal) + code_suffix + "\n"
             else is
                 out = out + prefix + ": " + sev_word + ": " + msg + code_suffix + "\n"
             end
