@@ -1,0 +1,176 @@
+use "std -> strings" from "str"
+use "std -> term"    from "term"
+use "std -> env"     from "env"
+
+mod nidus_theme
+
+pub enum Style is
+    Graphical      ;; pełny, graficzny widok z fragmentem kodu (jak miette)
+    Ascii          ;; jak Graphical, ale wyłącznie znaki ASCII
+    Narratable     ;; opis liniowy, przyjazny czytnikom ekranu
+    Minimal        ;; jedna linia na wpis, w stylu kompilatora (grep-friendly)
+    Json           ;; wyjście maszynowe (JSON)
+    Markdown       ;; blok Markdown (np. do komentarzy w PR)
+    GithubActions  ;; adnotacje `::error/::warning::` GitHub Actions
+end
+
+pub fn style_name(s: Style) -> string is
+    return match s is
+        Style::Graphical     => "graphical"
+        Style::Ascii         => "ascii"
+        Style::Narratable    => "narratable"
+        Style::Minimal       => "minimal"
+        Style::Json          => "json"
+        Style::Markdown      => "markdown"
+        Style::GithubActions => "github"
+    end
+end
+
+pub fn detect_unicode_support() -> bool is
+    let lang: string   = str::to_upper(env::get_or("LANG", ""))
+    let lc_all: string = str::to_upper(env::get_or("LC_ALL", ""))
+    let lc_ctype: string = str::to_upper(env::get_or("LC_CTYPE", ""))
+    return lang.contains("UTF-8") || lang.contains("UTF8") ||
+           lc_all.contains("UTF-8") || lc_all.contains("UTF8") ||
+           lc_ctype.contains("UTF-8") || lc_ctype.contains("UTF8")
+end
+
+pub fn env_flag_set(name: string) -> bool is
+    let v: string = env::get(name)
+    return v != "" && v != "0"
+end
+
+;; Kolejność decyzji (od najsilniejszej):
+;;  1. NIDUS_COLOR=always|never   -> jawne nadpisanie (np. dla procesu potomnego z pipe)
+;;  2. NO_COLOR                   -> bez kolorów (https://no-color.org)
+;;  3. CLICOLOR_FORCE / FORCE_COLOR -> kolory wymuszone
+;;  4. terminal (TERM, nie "dumb") -> kolory
+pub fn detect_color_support() -> bool is
+    let ov: string = str::to_upper(env::get("NIDUS_COLOR"))
+    if ov == "ALWAYS" || ov == "1" || ov == "TRUE" || ov == "ON"  is return true end
+    if ov == "NEVER"  || ov == "0" || ov == "FALSE" || ov == "OFF" is return false end
+    if env::get("NO_COLOR") != "" is return false end
+    if env_flag_set("CLICOLOR_FORCE") || env_flag_set("FORCE_COLOR") is return true end
+    if !term::is_tty() is return false end
+    if env::get("TERM") == "dumb" is return false end
+    return true
+end
+
+;; Wybiera styl na podstawie środowiska:
+;;  - CI GitHub Actions           -> GithubActions
+;;  - zmienna NIDUS_STYLE         -> wymuszony styl (ręczne nadpisanie)
+;;  - stdout nie jest terminalem  -> Minimal (dobre do logów/grep)
+;;  - terminal wspiera UTF-8      -> Graphical
+;;  - w przeciwnym razie          -> Ascii
+pub fn auto_style() -> Style is
+    if env::get("GITHUB_ACTIONS") == "true" is return Style::GithubActions end
+
+    let forced: string = env::get("NIDUS_STYLE")
+    if forced == "graphical"  is return Style::Graphical end
+    if forced == "ascii"      is return Style::Ascii end
+    if forced == "narratable" is return Style::Narratable end
+    if forced == "minimal"    is return Style::Minimal end
+    if forced == "json"       is return Style::Json end
+    if forced == "markdown"   is return Style::Markdown end
+    if forced == "github"     is return Style::GithubActions end
+
+    ;; bez terminala i bez wymuszonego koloru -> zwięzły Minimal (logi/grep)
+    if !term::is_tty() && !detect_color_support() is return Style::Minimal end
+    if detect_unicode_support() is return Style::Graphical end
+    return Style::Ascii
+end
+
+pub fn auto_theme() -> nidus_theme::Theme is
+    if !detect_color_support() is
+        if detect_unicode_support() is return nidus_theme::theme_mono_unicode() end
+        return nidus_theme::theme_mono()
+    end
+    if detect_unicode_support() is return nidus_theme::theme_dark() end
+    return nidus_theme::theme_ascii()
+end
+
+pub struct Config is
+    pub style: Style
+    pub theme: nidus_theme::Theme
+end
+
+pub fn config_default() -> Config is
+    return Config { style: auto_style(), theme: auto_theme() }
+end
+
+pub fn config_with(style: Style, theme: nidus_theme::Theme) -> Config is
+    return Config { style: style, theme: theme }
+end
+
+;; Zawsze kolorowo: pełny widok graficzny z kolorami niezależnie od autodetekcji
+;; (unikod, jeśli terminal go deklaruje; w przeciwnym razie ASCII).
+pub fn config_colored() -> Config is
+    if detect_unicode_support() is
+        return Config { style: Style::Graphical, theme: nidus_theme::theme_dark() }
+    end
+    return Config { style: Style::Ascii, theme: nidus_theme::theme_ascii() }
+end
+
+impl Config is
+    fn with_style(self, s: Style) -> Config is
+        self.style = s
+        return self
+    end
+
+    fn with_theme(self, t: nidus_theme::Theme) -> Config is
+        self.theme = t
+        return self
+    end
+end
+
+pub fn style_is_human(s: Style) -> bool is
+    return index(s) <= 3
+end
+
+;; Indeks stylu (kolejność jak w enumie): 0 Graphical, 1 Ascii, 2 Narratable,
+;; 3 Minimal, 4 Json, 5 Markdown, 6 GithubActions.
+pub fn index(s: Style) -> int is
+    return match s is
+        Style::Graphical     => 0
+        Style::Ascii         => 1
+        Style::Narratable    => 2
+        Style::Minimal       => 3
+        Style::Json          => 4
+        Style::Markdown      => 5
+        Style::GithubActions => 6
+    end
+end
+
+pub fn graphical() -> Style is
+    return Style::Graphical
+end
+
+pub fn ascii() -> Style is
+    return Style::Ascii
+end
+
+pub fn narratable() -> Style is
+    return Style::Narratable
+end
+
+pub fn minimal() -> Style is
+    return Style::Minimal
+end
+
+pub fn json() -> Style is
+    return Style::Json
+end
+
+pub fn markdown() -> Style is
+    return Style::Markdown
+end
+
+pub fn github_actions() -> Style is
+    return Style::GithubActions
+end
+
+;; Wszystkie style, w kolejności indeksów.
+pub fn all() -> [Style] is
+    return [Style::Graphical, Style::Ascii, Style::Narratable, Style::Minimal,
+            Style::Json, Style::Markdown, Style::GithubActions]
+end
