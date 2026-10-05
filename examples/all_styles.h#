@@ -3,7 +3,7 @@ use "bit -> nidus" from "nidus"
 fn main() is
     let src: string = "let cfg = load(\"app.toml\")\nlet port = cfg.port\n"
 
-    let mut d: nidus::Diagnostic = nidus::error("brakujący klucz `port` w konfiguracji")
+    let mut d: nidus::diagnostic::Diagnostic = nidus::error("brakujący klucz `port` w konfiguracji")
     d = d.with_code("nidus::config::missing_key")
     d = d.with_source("app.toml", src)
     d = d.with_label(nidus::primary_label(42, 4, "ten klucz nie istnieje w pliku app.toml"))
@@ -12,26 +12,26 @@ fn main() is
 
     ;; kolorowy motyw — style dla człowieka (graphical/ascii/narratable/minimal) dostają kolory,
     ;; json/markdown/github zawsze są czystym tekstem. Chcesz bez kolorów? nidus::theme_mono()
-    let theme: nidus::Theme = nidus::theme_dark()
+    let theme: nidus::theme::Theme = nidus::theme_dark()
 
     write("=== graphical ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::Graphical, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::graphical(), theme))
 
     write("=== ascii ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::Ascii, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::ascii(), theme))
 
     write("=== narratable ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::Narratable, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::narratable(), theme))
 
     write("=== minimal ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::Minimal, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::minimal(), theme))
 
     write("=== json ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::Json, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::json(), theme))
 
     write("=== markdown ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::Markdown, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::markdown(), theme))
 
     write("=== github actions ===")
-    nidus::report_with(d, nidus::config_with(nidus::Style::GithubActions, theme))
+    nidus::report_with(d, nidus::config_with(nidus::style::github_actions(), theme))
 end
