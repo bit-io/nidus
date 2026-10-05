@@ -5,7 +5,7 @@ fn main() is
     ;; "c" (offset 48, len 1) nie istnieje — pokażemy dwie etykiety:
     ;; jedną główną na "c", jedną pomocniczą na deklaracji "b" (offset 15)
 
-    let mut d: nidus::Diagnostic = nidus::error("nieznana zmienna `c`")
+    let mut d: nidus::diagnostic::Diagnostic = nidus::error("nieznana zmienna `c`")
     d = d.with_code("nidus::resolve::unknown_ident")
     d = d.with_source("add.ns", src)
     d = d.with_label(nidus::primary_label(48, 1, "brak takiej zmiennej w zasięgu"))
