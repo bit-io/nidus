@@ -127,6 +127,8 @@ pub fn json_escape(s: string) -> string is
             out = out + "\\r"
         elsif c == "\t" is
             out = out + "\\t"
+        elsif c == "\x1b" is
+            out = out + "\\u001b"
         else is
             out = out + c
         end
@@ -141,5 +143,14 @@ pub fn gh_escape(s: string) -> string is
     let s1: string = str::replace_all(s, "%", "%25")
     let s2: string = str::replace_all(s1, "\r", "%0D")
     let s3: string = str::replace_all(s2, "\n", "%0A")
+    return s3
+end
+
+;; Ucieczka wartości właściwości (file=, title=) w workflow-command:
+;; dodatkowo `:` i `,` muszą być zakodowane.
+pub fn gh_escape_prop(s: string) -> string is
+    let s1: string = gh_escape(s)
+    let s2: string = str::replace_all(s1, ":", "%3A")
+    let s3: string = str::replace_all(s2, ",", "%2C")
     return s3
 end
