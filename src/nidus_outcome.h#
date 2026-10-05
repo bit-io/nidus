@@ -1,0 +1,6 @@
+mod nidus_diagnostic
+
+pub enum Outcome<T> is
+    Success(T)
+    Failure(nidus_diagnostic::Diagnostic)
+end
