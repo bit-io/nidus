@@ -1,0 +1,239 @@
+use "std -> fmt"     from "fmt"
+
+mod nidus_diagnostic
+mod nidus_span
+mod nidus_text
+mod nidus_theme
+
+;; Etykieta z wyliczoną kolumną startu/końca w obrębie jednej linii.
+pub struct Placed is
+    pub text:      string
+    pub primary:   bool
+    pub col_start: int
+    pub col_end:   int   ;; wyłącznie (exclusive)
+end
+
+pub fn sort_placed(arr: [Placed]) -> [Placed] is
+    let mut a: [Placed] = arr
+    let n: int = a.len()
+    let mut i: int = 1
+    while i < n is
+        let key: Placed = a[i]
+        let mut j: int = i - 1
+        while j >= 0 && a[j].col_start > key.col_start is
+            a[j + 1] = a[j]
+            j -= 1
+        end
+        a[j + 1] = key
+        i += 1
+    end
+    return a
+end
+
+pub fn labels_for_line(src: string, labels: [nidus_span::Label], line_no: int, line_len: int) -> [Placed] is
+    let mut result: [Placed] = []
+    for l in labels is
+        let ln: int = nidus_text::line_of_offset(src, l.sp.offset)
+        if ln == line_no is
+            let col: int = nidus_text::col_of_offset(src, l.sp.offset)
+            let mut seg_len: int = l.sp.len
+            if seg_len < 1 is seg_len = 1 end
+            let max_len: int = line_len - (col - 1)
+            if max_len < 1 is
+                seg_len = 1
+            elsif seg_len > max_len is
+                seg_len = max_len
+            end
+            result.push(Placed { text: l.text, primary: l.primary, col_start: col, col_end: col + seg_len })
+        end
+    end
+    return sort_placed(result)
+end
+
+;; Linia kodu z podświetlonymi (kolorem etykiety) fragmentami wskazanymi
+;; przez etykiety — dzięki temu błędne miejsce widać już w samym kodzie.
+;; Bez kolorów zwraca dokładnie `text`.
+pub fn highlight_line(text: string, placed: [Placed], sev_color: string, pal: nidus_theme::Palette) -> string is
+    let n: int = text.len()
+    let mut out: string = ""
+    let mut cursor: int = 1
+    for p in placed is
+        let mut a: int = p.col_start
+        if a < cursor is a = cursor end
+        let mut b: int = p.col_end
+        if b > n + 1 is b = n + 1 end
+        if a <= n && b > a is
+            if a > cursor is out = out + text[cursor - 1..a - 1] end
+            out = out + nidus_theme::paint(label_color(p.primary, sev_color, pal), text[a - 1..b - 1], pal)
+            cursor = b
+        end
+    end
+    if cursor <= n is out = out + text[cursor - 1..n] end
+    return out
+end
+
+pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme) -> string is
+    let src: string   = d.source_code
+    let cs:  nidus_theme::Charset  = theme.charset
+    let pal: nidus_theme::Palette  = theme.palette
+    let sev_color: string = nidus_theme::severity_color(d.severity, pal)
+    let total_lines: int  = nidus_text::line_count(src)
+
+    let mut touched: [int] = []
+    for l in d.labels is
+        touched.push(nidus_text::line_of_offset(src, l.sp.offset))
+    end
+    if touched.len() == 0 is return "" end
+
+    let mut min_line: int = touched[0]
+    let mut max_line: int = touched[0]
+    for t in touched is
+        if t < min_line is min_line = t end
+        if t > max_line is max_line = t end
+    end
+    min_line = min_line - theme.context_lines
+    max_line = max_line + theme.context_lines
+    if min_line < 1 is min_line = 1 end
+    if max_line > total_lines is max_line = total_lines end
+
+    let mut gw: int = to_string(max_line).len()
+    if gw < 2 is gw = 2 end
+
+    let head_line: int = nidus_text::line_of_offset(src, d.labels[0].sp.offset)
+    let head_col:  int = nidus_text::col_of_offset(src, d.labels[0].sp.offset)
+
+    ;; przerywana pionowa kreska w gutterze oraz kropka w wierszach adnotacji
+    let gutter_dot: string = fmt::repeat(" ", gw + 1) + nidus_theme::paint(pal.border_c, cs.dot, pal) + " "
+
+    ;; ╭──[plik:linia:kolumna]
+    let mut out: string = fmt::repeat(" ", gw + 1) + nidus_theme::paint(pal.border_c, cs.top_left + cs.h_bar + cs.h_bar + "[", pal)
+    if d.source_name != "" is
+        out = out + nidus_theme::paint(pal.path_c, d.source_name, pal) + nidus_theme::paint(pal.border_c, ":", pal)
+    end
+    out = out + nidus_theme::paint(pal.pos_c, to_string(head_line) + ":" + to_string(head_col), pal)
+    out = out + nidus_theme::paint(pal.border_c, "]", pal) + "\n"
+
+    let mut line_no: int = min_line
+    while line_no <= max_line is
+        let text: string = nidus_text::get_line_text(src, line_no)
+        let placed: [Placed] = labels_for_line(src, d.labels, line_no, text.len())
+
+        ;; numer linii: wyraźny dla linii z etykietami, przygaszony dla kontekstu
+        let mut num_color: string = pal.border_c
+        let mut shown: string = text
+        if placed.len() > 0 is
+            num_color = pal.lineno_c
+            shown = highlight_line(text, placed, sev_color, pal)
+        end
+
+        if theme.show_line_numbers is
+            out = out + nidus_theme::paint(num_color, fmt::pad_left(to_string(line_no), gw), pal) + " " + nidus_theme::paint(pal.border_c, cs.v_bar, pal) + " " + shown + "\n"
+        else is
+            out = out + fmt::repeat(" ", gw) + " " + nidus_theme::paint(pal.border_c, cs.v_bar, pal) + " " + shown + "\n"
+        end
+
+        if placed.len() > 0 is
+            ;; wiersz podkreśleń
+            let mut underline: string = gutter_dot
+            let mut cursor: int = 1
+            for p in placed is
+                if p.col_start > cursor is
+                    underline = underline + fmt::repeat(" ", p.col_start - cursor)
+                    cursor = p.col_start
+                end
+                let seg_len: int = p.col_end - p.col_start
+                let color:   string = nidus_theme::label_color(p.primary, sev_color, pal)
+                underline = underline + nidus_theme::paint(color, fmt::repeat(cs.underline, seg_len), pal)
+                cursor = p.col_end
+            end
+            out = out + underline + "\n"
+
+            ;; wiersze komunikatów (efekt schodkowy), od najbardziej wysuniętej
+            ;; w prawo etykiety do najbardziej wysuniętej w lewo
+            let mut idx: int = placed.len() - 1
+            while idx >= 0 is
+                let p: Placed = placed[idx]
+                if p.text != "" is
+                    let mut row: string = gutter_dot
+                    let mut c2: int = 1
+                    let mut j: int = 0
+                    while j < idx is
+                        let other: Placed = placed[j]
+                        if other.text != "" is
+                            if other.col_start > c2 is
+                                row = row + fmt::repeat(" ", other.col_start - c2)
+                                c2 = other.col_start
+                            end
+                            row = row + nidus_theme::paint(label_color(other.primary, sev_color, pal), cs.vbar_connector, pal)
+                            c2 = c2 + 1
+                        end
+                        j += 1
+                    end
+                    if p.col_start > c2 is
+                        row = row + fmt::repeat(" ", p.col_start - c2)
+                    end
+                    row = row + nidus_theme::paint(label_color(p.primary, sev_color, pal), cs.connector + " " + p.text, pal)
+                    out = out + row + "\n"
+                end
+                idx = idx - 1
+            end
+        end
+
+        line_no = line_no + 1
+    end
+
+    out = out + fmt::repeat(" ", gw + 1) + nidus_theme::paint(pal.border_c, cs.bottom_left + fmt::repeat(cs.h_bar, 4), pal) + "\n"
+    return out
+end
+
+pub fn render_graphical(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme) -> string is
+    let pal: nidus_theme::Palette = theme.palette
+    let cs:  nidus_theme::Charset = theme.charset
+    let w:   nidus_theme::Words   = theme.words
+    let sev_color: string = nidus_theme::severity_color(d.severity, pal)
+    let icon:      string = nidus_theme::severity_icon(d.severity, cs)
+    let sev_word:  string = nidus_theme::sev_word_for(d.severity, w)
+
+    ;;   × error[kod::bledu]: wiadomość z `fragmentem`
+    let mut out: string = "\n  " + nidus_theme::paint(sev_color, icon + " " + sev_word, pal)
+    if d.code != "" is
+        out = out + nidus_theme::paint(pal.border_c, "[", pal) + nidus_theme::paint(pal.code_c, d.code, pal) + nidus_theme::paint(pal.border_c, "]", pal)
+    end
+    out = out + nidus_theme::paint(sev_color, ":", pal) + " "
+    out = out + pal.bold_c + nidus_theme::colorize_ticks(d.message, pal.code_c, pal.bold_c, pal) + pal.reset + "\n"
+
+    if d.source_code != "" && d.labels.len() > 0 is
+        out = out + render_snippet(d, theme) + "\n"
+    elsif d.labels.len() > 0 is
+        for l in d.labels is
+            out = out + "    " + nidus_theme::paint(label_color(l.primary, sev_color, pal), "->", pal) + " " + nidus_theme::colorize_ticks(l.text, pal.code_c, "", pal) + "\n"
+        end
+        out = out + "\n"
+    end
+
+    if d.help != "" is
+        let hp: string = "  " + nidus_theme::paint(pal.help_c, w.help + ":", pal) + " "
+        out = out + nidus_theme::colorize_ticks(wrap_with_prefix(d.help, hp, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
+    end
+    if d.note != "" is
+        let np: string = "  " + nidus_theme::paint(pal.note_c, w.note + ":", pal) + " "
+        out = out + nidus_theme::colorize_ticks(wrap_with_prefix(d.note, np, "        ", theme.wrap_width), pal.code_c, "", pal) + "\n"
+    end
+    if d.url != "" is
+        out = out + "   " + nidus_theme::paint(pal.note_c, w.see + ":", pal) + " " + nidus_theme::paint(pal.link_c, d.url, pal) + "\n"
+    end
+
+    if d.related.len() > 0 is
+        out = out + "  " + nidus_theme::paint(pal.border_c, cs.connector, pal) + " " + nidus_theme::paint(pal.dim_c, w.caused_by + ":", pal) + "\n"
+        for r in d.related is
+            out = out + fmt::indent(render_graphical(r, theme), 4) + "\n"
+        end
+    end
+
+    return out
+end
+
+;; Konstruktor etykiety już rozmieszczonej w linii (używany w testach).
+pub fn placed(text: string, primary: bool, col_start: int, col_end: int) -> Placed is
+    return Placed { text: text, primary: primary, col_start: col_start, col_end: col_end }
+end
