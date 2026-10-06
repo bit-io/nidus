@@ -1,4 +1,4 @@
-use "std -> strings" from "str"
+use "std -> strings" from "nstr"
 use "std -> fmt"     from "fmt"
 
 pub fn clamp_offset(offset: int, n: int) -> int is
@@ -8,7 +8,7 @@ pub fn clamp_offset(offset: int, n: int) -> int is
 end
 
 pub fn line_count(src: string) -> int is
-    let n: int = src.len()
+    let n: int = string_len(src)
     let mut lines: int = 1
     let mut i: int = 0
     while i < n is
@@ -21,7 +21,7 @@ pub fn line_count(src: string) -> int is
 end
 
 pub fn line_of_offset(src: string, offset: int) -> int is
-    let n: int = src.len()
+    let n: int = string_len(src)
     let clamped: int = clamp_offset(offset, n)
     let mut line: int = 1
     let mut i: int = 0
@@ -35,7 +35,7 @@ pub fn line_of_offset(src: string, offset: int) -> int is
 end
 
 pub fn col_of_offset(src: string, offset: int) -> int is
-    let n: int = src.len()
+    let n: int = string_len(src)
     let clamped: int = clamp_offset(offset, n)
     let mut col: int = 1
     let mut i: int = clamped
@@ -50,7 +50,7 @@ pub fn col_of_offset(src: string, offset: int) -> int is
 end
 
 pub fn strip_cr(s: string) -> string is
-    let n: int = s.len()
+    let n: int = string_len(s)
     if n > 0 && s[n - 1..n] == "\r" is
         return s[0..n - 1]
     end
@@ -60,7 +60,7 @@ end
 ;; Zwraca treść pojedynczej linii (1-based, bez \n / \r).
 ;; Nieistniejący numer linii zwraca "".
 pub fn get_line_text(src: string, line_no: int) -> string is
-    let n: int = src.len()
+    let n: int = string_len(src)
     let mut current: int = 1
     let mut start: int = 0
     let mut i: int = 0
@@ -78,17 +78,42 @@ pub fn get_line_text(src: string, line_no: int) -> string is
 end
 
 pub fn capitalize(s: string) -> string is
-    if s.len() == 0 is return s end
-    return str::to_upper(s[0..1]) + s[1..s.len()]
+    if string_len(s) == 0 is return s end
+    return nstr::to_upper(s[0..1]) + s[1..string_len(s)]
+end
+
+;; Zawija `text` do `width` znakow (lamie na spacjach; dlugie slowo nie jest dzielone).
+;; Wlasna implementacja zamiast fmt::wrap: tamten robi `w.len()` na napisie
+;; z niezaadnotowanej zmiennej, a backend natywny bierze to za dlugosc tablicy.
+pub fn wrap_text(s: string, width: int) -> string is
+    let words: [string] = nstr::split_whitespace(s)
+    let mut out: string = ""
+    let mut line_len: int = 0
+    let mut i: int = 0
+    while i < words.len() is
+        let w: string = words[i]
+        let wl: int = string_len(w)
+        if line_len > 0 && line_len + 1 + wl > width is
+            out = out + "\n"
+            line_len = 0
+        elsif line_len > 0 is
+            out = out + " "
+            line_len += 1
+        end
+        out = out + w
+        line_len += wl
+        i += 1
+    end
+    return out
 end
 
 ;; Zawija `text` do `width` znaków, dokleja `prefix` do pierwszej linii
 ;; i `cont_indent` do kolejnych (przydatne dla "  help: ..." / "  note: ...").
 pub fn wrap_with_prefix(text: string, prefix: string, cont_indent: string, width: int) -> string is
-    let mut avail: int = width - cont_indent.len()
+    let mut avail: int = width - string_len(cont_indent)
     if avail < 20 is avail = 20 end
-    let wrapped: string  = fmt::wrap(text, avail)
-    let lines:   [string] = str::split(wrapped, "\n")
+    let wrapped: string  = wrap_text(text, avail)
+    let lines:   [string] = nstr::split(wrapped, "\n")
     let mut out: string = ""
     let mut i: int = 0
     while i < lines.len() is
@@ -112,7 +137,7 @@ pub fn pluralize(n: int, one: string, few: string, many: string) -> string is
 end
 
 pub fn json_escape(s: string) -> string is
-    let n: int = s.len()
+    let n: int = string_len(s)
     let mut out: string = ""
     let mut i: int = 0
     while i < n is
@@ -140,9 +165,9 @@ end
 ;; Ucieczka danych zgodnie z formatem GitHub Actions workflow-command
 ;; (kolejność ma znaczenie: `%` musi być zamienione jako pierwsze).
 pub fn gh_escape(s: string) -> string is
-    let s1: string = str::replace_all(s, "%", "%25")
-    let s2: string = str::replace_all(s1, "\r", "%0D")
-    let s3: string = str::replace_all(s2, "\n", "%0A")
+    let s1: string = nstr::replace_all(s, "%", "%25")
+    let s2: string = nstr::replace_all(s1, "\r", "%0D")
+    let s3: string = nstr::replace_all(s2, "\n", "%0A")
     return s3
 end
 
@@ -150,7 +175,7 @@ end
 ;; dodatkowo `:` i `,` muszą być zakodowane.
 pub fn gh_escape_prop(s: string) -> string is
     let s1: string = gh_escape(s)
-    let s2: string = str::replace_all(s1, ":", "%3A")
-    let s3: string = str::replace_all(s2, ",", "%2C")
+    let s2: string = nstr::replace_all(s1, ":", "%3A")
+    let s3: string = nstr::replace_all(s2, ",", "%2C")
     return s3
 end
