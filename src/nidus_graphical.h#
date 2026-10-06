@@ -54,7 +54,7 @@ end
 ;; przez etykiety — dzięki temu błędne miejsce widać już w samym kodzie.
 ;; Bez kolorów zwraca dokładnie `text`.
 pub fn highlight_line(text: string, placed: [Placed], sev_color: string, pal: nidus_theme::Palette) -> string is
-    let n: int = text.len()
+    let n: int = string_len(text)
     let mut out: string = ""
     let mut cursor: int = 1
     for p in placed is
@@ -96,7 +96,11 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
     if min_line < 1 is min_line = 1 end
     if max_line > total_lines is max_line = total_lines end
 
-    let mut gw: int = to_string(max_line).len()
+    ;; UWAGA (backend natywny): `to_string(x).len()` kompilator bierze za dlugosc TABLICY
+    ;; (nie rozpoznaje wyniku to_string jako napisu) i czyta smieci -> segfault.
+    ;; Dlatego napis trafia do zmiennej z adnotacja, a dlugosc daje string_len.
+    let max_line_str: string = to_string(max_line)
+    let mut gw: int = string_len(max_line_str)
     if gw < 2 is gw = 2 end
 
     let head_line: int = nidus_text::line_of_offset(src, d.labels[0].sp.offset)
@@ -116,11 +120,13 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
     let mut line_no: int = min_line
     while line_no <= max_line is
         let text: string = nidus_text::get_line_text(src, line_no)
-        let placed: [Placed] = labels_for_line(src, d.labels, line_no, text.len())
+        let placed: [Placed] = labels_for_line(src, d.labels, line_no, string_len(text))
 
         ;; numer linii: wyraźny dla linii z etykietami, przygaszony dla kontekstu
-        let mut num_color: string = pal.border_c
-        let mut shown: string = text
+        ;; linie kontekstu (bez etykiet) są przygaszone, żeby błędne miejsce
+        ;; od razu rzucało się w oczy; układ tekstu się nie zmienia
+        let mut num_color: string = "" + pal.border_c   ;; kopia, nie przeniesienie pola palety
+        let mut shown: string = nidus_theme::paint(pal.dim_c, text, pal)
         if placed.len() > 0 is
             num_color = pal.lineno_c
             shown = highlight_line(text, placed, sev_color, pal)
@@ -134,7 +140,7 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
 
         if placed.len() > 0 is
             ;; wiersz podkreśleń
-            let mut underline: string = gutter_dot
+            let mut underline: string = "" + gutter_dot   ;; kopia (gutter_dot uzywany jeszcze nizej)
             let mut cursor: int = 1
             for p in placed is
                 let mut a: int = p.col_start
@@ -158,7 +164,7 @@ pub fn render_snippet(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Theme
             while idx >= 0 is
                 let p: Placed = placed[idx]
                 if p.text != "" is
-                    let mut row: string = gutter_dot
+                    let mut row: string = "" + gutter_dot
                     let mut c2: int = 1
                     let mut j: int = 0
                     while j < idx is
