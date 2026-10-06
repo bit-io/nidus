@@ -1,4 +1,4 @@
-use "std -> strings" from "str"
+use "std -> strings" from "nstr"
 
 mod nidus_severity
 
@@ -121,6 +121,113 @@ pub fn palette_retro() -> Palette is
     }
 end
 
+;; ── Pomocnicze konstruktory kodów ANSI (0.4.0) ──────────────────────────
+;; Truecolor: \x1b[38;2;r;g;bm
+pub fn tc(r: int, g: int, b: int) -> string is
+    return "\x1b[38;2;" + to_string(r) + ";" + to_string(g) + ";" + to_string(b) + "m"
+end
+
+;; Paleta 256 kolorów xterm: \x1b[38;5;nm
+pub fn c256(n: int) -> string is
+    return "\x1b[38;5;" + to_string(n) + "m"
+end
+
+pub fn bold_of(code: string) -> string is
+    return "\x1b[1m" + code
+end
+
+pub fn underline_of(code: string) -> string is
+    return "\x1b[4m" + code
+end
+
+;; ── Nowe palety 0.4.0 ───────────────────────────────────────────────────
+
+;; "vivid" — nowoczesna paleta truecolor (w stylu Tokyo Night): miękkie,
+;; nasycone kolory, wyraźna hierarchia (błąd > etykieta > kod > ramka).
+pub fn palette_vivid() -> Palette is
+    return Palette {
+        error_c:   bold_of(tc(247, 118, 142)),
+        warning_c: bold_of(tc(224, 175, 104)),
+        advice_c:  bold_of(tc(125, 207, 255)),
+        help_c:    tc(158, 206, 106),
+        note_c:    tc(122, 162, 247),
+        link_c:    underline_of(tc(122, 162, 247)),
+        dim_c:     tc(115, 122, 162),
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    tc(86, 95, 137),
+        lineno_c:    bold_of(tc(42, 195, 222)),
+        path_c:      bold_of(tc(192, 202, 245)),
+        pos_c:       tc(255, 158, 100),
+        code_c:      tc(187, 154, 247),
+        secondary_c: bold_of(tc(42, 195, 222))
+    }
+end
+
+;; "nord" — chłodna, stonowana paleta truecolor.
+pub fn palette_nord() -> Palette is
+    return Palette {
+        error_c:   bold_of(tc(191, 97, 106)),
+        warning_c: bold_of(tc(235, 203, 139)),
+        advice_c:  bold_of(tc(136, 192, 208)),
+        help_c:    tc(163, 190, 140),
+        note_c:    tc(129, 161, 193),
+        link_c:    underline_of(tc(136, 192, 208)),
+        dim_c:     tc(129, 139, 159),
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    tc(94, 105, 126),
+        lineno_c:    bold_of(tc(143, 188, 187)),
+        path_c:      bold_of(tc(236, 239, 244)),
+        pos_c:       tc(208, 135, 112),
+        code_c:      tc(180, 142, 173),
+        secondary_c: bold_of(tc(143, 188, 187))
+    }
+end
+
+;; "dracula" — kontrastowa paleta truecolor na ciemnym tle.
+pub fn palette_dracula() -> Palette is
+    return Palette {
+        error_c:   bold_of(tc(255, 85, 85)),
+        warning_c: bold_of(tc(255, 184, 108)),
+        advice_c:  bold_of(tc(139, 233, 253)),
+        help_c:    tc(80, 250, 123),
+        note_c:    tc(189, 147, 249),
+        link_c:    underline_of(tc(139, 233, 253)),
+        dim_c:     tc(110, 124, 170),
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    tc(98, 114, 164),
+        lineno_c:    bold_of(tc(139, 233, 253)),
+        path_c:      bold_of(tc(248, 248, 242)),
+        pos_c:       tc(241, 250, 140),
+        code_c:      tc(255, 121, 198),
+        secondary_c: bold_of(tc(189, 147, 249))
+    }
+end
+
+;; Paleta 256 kolorów — dla terminali bez truecolor (TERM=xterm-256color),
+;; gdzie 16 kolorów ANSI wyglądałoby topornie.
+pub fn palette_256() -> Palette is
+    return Palette {
+        error_c:   bold_of(c256(204)),
+        warning_c: bold_of(c256(214)),
+        advice_c:  bold_of(c256(81)),
+        help_c:    c256(114),
+        note_c:    c256(111),
+        link_c:    underline_of(c256(111)),
+        dim_c:     c256(245),
+        bold_c:    "\x1b[1m",
+        reset:     "\x1b[0m",
+        border_c:    c256(240),
+        lineno_c:    bold_of(c256(80)),
+        path_c:      bold_of(c256(255)),
+        pos_c:       c256(215),
+        code_c:      c256(176),
+        secondary_c: bold_of(c256(75))
+    }
+end
+
 ;; Słownik lokalizacyjny — pozwala renderować komunikaty w dowolnym języku
 ;; bez dotykania logiki renderowania.
 pub struct Words is
@@ -230,6 +337,71 @@ pub fn theme_retro() -> Theme is
     }
 end
 
+pub fn theme_vivid() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_vivid(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+pub fn theme_nord() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_nord(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+pub fn theme_dracula() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_dracula(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+;; Unikod + 256 kolorów.
+pub fn theme_256() -> Theme is
+    return Theme {
+        charset: charset_unicode(), palette: palette_256(), words: words_en(),
+        context_lines: 1, wrap_width: 80, show_line_numbers: true
+    }
+end
+
+;; Motyw po nazwie (dla NIDUS_THEME i konfiguracji). Nieznana nazwa -> dark.
+pub fn theme_known(name: string) -> bool is
+    return name == "dark" || name == "light" || name == "ascii" || name == "mono" ||
+           name == "mono_unicode" || name == "retro" || name == "polski" ||
+           name == "vivid" || name == "nord" || name == "dracula" || name == "256"
+end
+
+pub fn theme_by_name(name: string) -> Theme is
+    if name == "light"        is return theme_light() end
+    if name == "ascii"        is return theme_ascii() end
+    if name == "mono"         is return theme_mono() end
+    if name == "mono_unicode" is return theme_mono_unicode() end
+    if name == "retro"        is return theme_retro() end
+    if name == "polski"       is return theme_polski() end
+    if name == "vivid"        is return theme_vivid() end
+    if name == "nord"         is return theme_nord() end
+    if name == "dracula"      is return theme_dracula() end
+    if name == "256"          is return theme_256() end
+    return theme_dark()
+end
+
+;; Najładniejszy motyw dla danego poziomu kolorów terminala
+;; (0 brak · 1 = 16 · 2 = 256 · 3 = truecolor) i obsługi unikodu.
+pub fn theme_for_level(level: int, unicode: bool) -> Theme is
+    let mut t: Theme = theme_mono_unicode()
+    if level >= 3 is
+        t = theme_vivid()
+    elsif level == 2 is
+        t = theme_256()
+    elsif level == 1 is
+        t = theme_dark()
+    end
+    if !unicode is t.charset = charset_ascii() end
+    return t
+end
+
 ;; Domyślny ciemny motyw, ale ze wszystkimi napisami po polsku.
 pub fn theme_polski() -> Theme is
     let mut t: Theme = theme_dark()
@@ -248,7 +420,7 @@ end
 ;; Niedomknięty backtick -> tekst bez zmian.
 pub fn colorize_ticks(text: string, color: string, after: string, pal: Palette) -> string is
     if color == "" is return text end
-    let parts: [string] = str::split(text, "`")
+    let parts: [string] = nstr::split(text, "`")
     if parts.len() % 2 == 0 is return text end
     let mut out: string = ""
     let mut i: int = 0
