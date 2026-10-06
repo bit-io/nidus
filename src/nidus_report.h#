@@ -1,4 +1,4 @@
-use "std -> strings" from "str"
+use "std -> strings" from "nstr"
 
 mod nidus_diagnostic
 mod nidus_graphical
@@ -68,7 +68,7 @@ pub fn summarize_with(ds: [nidus_diagnostic::Diagnostic], pal: nidus_theme::Pale
         parts.push(nidus_theme::paint(pal.advice_c, to_string(advices) + " " + nidus_text::pluralize(advices, "porada", "porady", "porad"), pal))
     end
     if parts.len() == 0 is return "Brak zgłoszonych diagnostyk." end
-    return str::join(parts, nidus_theme::paint(pal.border_c, ", ", pal))
+    return nstr::join(parts, nidus_theme::paint(pal.border_c, ", ", pal))
 end
 
 ;; Zwraca zdanie podsumowujące listę diagnostyk, np.
