@@ -225,3 +225,90 @@ fn test_github_without_source_name() is
     let out: string = nidus_machine::render_github(d)
     assert_true(out.contains("::error title=a%2C b%3A c::"))
 end
+
+;; ── kolory 0.4.0 ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_new_themes_do_not_change_layout() is
+    ;; każdy nowy motyw po zdjęciu ANSI daje dokładnie ten sam widok co mono
+    let plain: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::graphical(), nidus_theme::theme_mono_unicode()))
+    let themes: [nidus_theme::Theme] = [nidus_theme::theme_vivid(), nidus_theme::theme_nord(), nidus_theme::theme_dracula(), nidus_theme::theme_256()]
+    for t in themes is
+        let colored: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::graphical(), t))
+        assert_true(colored.contains("\x1b["))
+        assert_eq(fmt::strip_ansi(colored), plain)
+    end
+end
+
+#[test]
+fn test_truecolor_and_256_codes() is
+    assert_eq(nidus_theme::tc(1, 2, 3), "\x1b[38;2;1;2;3m")
+    assert_eq(nidus_theme::c256(81), "\x1b[38;5;81m")
+    let v: nidus_theme::Palette = nidus_theme::palette_vivid()
+    assert_true(v.error_c.contains("38;2;"))
+    assert_true(v.border_c != "")
+    let p: nidus_theme::Palette = nidus_theme::palette_256()
+    assert_true(p.error_c.contains("38;5;"))
+end
+
+#[test]
+fn test_theme_by_name() is
+    let pd: nidus_theme::Palette = nidus_theme::palette_dark()
+    let pv: nidus_theme::Palette = nidus_theme::palette_vivid()
+    assert_true(nidus_theme::theme_known("vivid"))
+    assert_true(nidus_theme::theme_known("nord"))
+    assert_true(nidus_theme::theme_known("256"))
+    assert_true(!nidus_theme::theme_known("nie-ma-takiego"))
+    let mono: nidus_theme::Theme = nidus_theme::theme_by_name("mono")
+    assert_eq(mono.palette.error_c, "")
+    let vivid: nidus_theme::Theme = nidus_theme::theme_by_name("vivid")
+    assert_eq(vivid.palette.error_c, pv.error_c)
+    ;; nieznana nazwa -> dark
+    let unknown: nidus_theme::Theme = nidus_theme::theme_by_name("xyz")
+    assert_eq(unknown.palette.error_c, pd.error_c)
+end
+
+#[test]
+fn test_theme_for_level() is
+    let pd: nidus_theme::Palette = nidus_theme::palette_dark()
+    let p2: nidus_theme::Palette = nidus_theme::palette_256()
+    let pv: nidus_theme::Palette = nidus_theme::palette_vivid()
+    let t0: nidus_theme::Theme = nidus_theme::theme_for_level(0, true)
+    let t1: nidus_theme::Theme = nidus_theme::theme_for_level(1, true)
+    let t2: nidus_theme::Theme = nidus_theme::theme_for_level(2, true)
+    let t3: nidus_theme::Theme = nidus_theme::theme_for_level(3, true)
+    assert_eq(t0.palette.error_c, "")
+    assert_eq(t1.palette.error_c, pd.error_c)
+    assert_eq(t2.palette.error_c, p2.error_c)
+    assert_eq(t3.palette.error_c, pv.error_c)
+    ;; bez unikodu -> znaki ASCII, ale kolory zostają
+    let a: nidus_theme::Theme = nidus_theme::theme_for_level(3, false)
+    assert_eq(a.charset.h_bar, "-")
+    assert_eq(a.palette.error_c, pv.error_c)
+end
+
+#[test]
+fn test_context_lines_are_dimmed() is
+    let out: string = nidus_report::render(sample_diag(), nidus_style::config_with(nidus_style::graphical(), nidus_theme::theme_vivid()))
+    let vp: nidus_theme::Palette = nidus_theme::palette_vivid()
+    let dim: string = vp.dim_c
+    assert_true(out.contains(dim))
+end
+
+;; ── regresje 0.4.1 (backend natywny) ───────────────────────────────────────
+
+#[test]
+fn test_wrap_text() is
+    assert_eq(nidus_text::wrap_text("aa bb cc", 80), "aa bb cc")
+    assert_eq(nidus_text::wrap_text("aa bb cc", 5), "aa bb\ncc")
+    assert_eq(nidus_text::wrap_text("", 10), "")
+    ;; za dlugie slowo nie jest dzielone
+    assert_eq(nidus_text::wrap_text("abcdefghij kl", 4), "abcdefghij\nkl")
+end
+
+#[test]
+fn test_wrap_with_prefix() is
+    let out: string = nidus_text::wrap_with_prefix("aa bb cc dd", "> ", "  ", 22)
+    assert_true(out.contains("> aa"))
+    assert_eq(fmt::strip_ansi(out), out)
+end
