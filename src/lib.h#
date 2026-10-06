@@ -11,7 +11,7 @@ mod nidus_text
 mod nidus_theme
 mod nidus_tests
 
-pub let VERSION: string = "0.3.0"
+pub let VERSION: string = "0.1.0"
 
 pub fn about() -> string is
     return "nidus v" + VERSION + " -- rozbudowana biblioteka diagnostyczna dla H#, inspirowana miette"
@@ -124,6 +124,40 @@ end
 ;; Domyślny ciemny motyw, ale ze wszystkimi napisami po polsku.
 pub fn theme_polski() -> nidus_theme::Theme is
     return nidus_theme::theme_polski()
+end
+
+pub fn theme_vivid() -> nidus_theme::Theme is
+    return nidus_theme::theme_vivid()
+end
+
+pub fn theme_nord() -> nidus_theme::Theme is
+    return nidus_theme::theme_nord()
+end
+
+pub fn theme_dracula() -> nidus_theme::Theme is
+    return nidus_theme::theme_dracula()
+end
+
+;; Unikod + 256 kolorów (terminale bez truecolor).
+pub fn theme_256() -> nidus_theme::Theme is
+    return nidus_theme::theme_256()
+end
+
+;; Motyw po nazwie ("dark", "light", "vivid", "nord", "dracula", "retro", "256",
+;; "polski", "ascii", "mono", "mono_unicode"); nieznana nazwa daje "dark".
+pub fn theme_by_name(name: string) -> nidus_theme::Theme is
+    return nidus_theme::theme_by_name(name)
+end
+
+;; Najładniejszy motyw dla poziomu kolorów (0 brak, 1 = 16, 2 = 256, 3 = truecolor).
+pub fn theme_for_level(level: int, unicode: bool) -> nidus_theme::Theme is
+    return nidus_theme::theme_for_level(level, unicode)
+end
+
+;; Poziom kolorów terminala: 0 brak · 1 = 16 · 2 = 256 · 3 = truecolor.
+;; Nadpisanie: NIDUS_COLOR_LEVEL=1|2|3.
+pub fn detect_color_level() -> int is
+    return nidus_style::detect_color_level()
 end
 
 pub fn style_name(s: nidus_style::Style) -> string is
