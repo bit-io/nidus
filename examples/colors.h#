@@ -1,6 +1,6 @@
 use "bit -> nidus" from "nidus"
 
-;; Pokaz kolorów nidus 0.2.0: trzy poziomy istotności, trzy motywy, kolorowe
+;; Pokaz kolorów nidus 0.4.0: trzy poziomy istotności, trzy motywy, kolorowe
 ;; podsumowanie. Zobacz też zmienną NIDUS_COLOR=always|never w README.
 
 fn main() is
@@ -32,6 +32,18 @@ fn main() is
 
     write("=== theme_retro (truecolor) ===")
     nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_retro()))
+
+    write("=== theme_vivid (truecolor) ===")
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_vivid()))
+
+    write("=== theme_nord (truecolor) ===")
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_nord()))
+
+    write("=== theme_dracula (truecolor) ===")
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_dracula()))
+
+    write("=== theme_256 (256 kolorów) ===")
+    nidus::print_all(ds, nidus::config_with(nidus::style::graphical(), nidus::theme_256()))
 
     write("=== minimal (też kolorowy) ===")
     nidus::print_all(ds, nidus::config_with(nidus::style::minimal(), nidus::theme_dark()))
