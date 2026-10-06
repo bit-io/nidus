@@ -1,4 +1,4 @@
-use "std -> strings" from "str"
+use "std -> strings" from "nstr"
 use "std -> fmt"     from "fmt"
 
 mod nidus_diagnostic
@@ -24,7 +24,7 @@ pub fn render_narratable(d: nidus_diagnostic::Diagnostic, theme: nidus_theme::Th
             out = out + "    " + nidus_theme::paint(pal.dim_c, "Linia", pal) + " " + nidus_theme::paint(pal.pos_c, to_string(ln), pal) + nidus_theme::paint(pal.dim_c, ", kolumna", pal) + " " + nidus_theme::paint(pal.pos_c, to_string(col), pal)
             if d.source_name != "" is out = out + " (" + nidus_theme::paint(pal.path_c, d.source_name, pal) + ")" end
             out = out + ":\n"
-            out = out + "        " + str::trim(text) + "\n"
+            out = out + "        " + nstr::trim(text) + "\n"
             if l.text != "" is
                 out = out + "        " + nidus_theme::paint(nidus_theme::label_color(l.primary, sev_color, pal), "Etykieta:", pal) + " " + l.text + "\n"
             end
