@@ -1,4 +1,4 @@
-use "std -> strings" from "str"
+use "std -> strings" from "nstr"
 use "std -> term"    from "term"
 use "std -> env"     from "env"
 
@@ -27,9 +27,9 @@ pub fn style_name(s: Style) -> string is
 end
 
 pub fn detect_unicode_support() -> bool is
-    let lang: string   = str::to_upper(env::get_or("LANG", ""))
-    let lc_all: string = str::to_upper(env::get_or("LC_ALL", ""))
-    let lc_ctype: string = str::to_upper(env::get_or("LC_CTYPE", ""))
+    let lang: string   = nstr::to_upper(env::get_or("LANG", ""))
+    let lc_all: string = nstr::to_upper(env::get_or("LC_ALL", ""))
+    let lc_ctype: string = nstr::to_upper(env::get_or("LC_CTYPE", ""))
     return lang.contains("UTF-8") || lang.contains("UTF8") ||
            lc_all.contains("UTF-8") || lc_all.contains("UTF8") ||
            lc_ctype.contains("UTF-8") || lc_ctype.contains("UTF8")
@@ -46,7 +46,7 @@ end
 ;;  3. CLICOLOR_FORCE / FORCE_COLOR -> kolory wymuszone
 ;;  4. terminal (TERM, nie "dumb") -> kolory
 pub fn detect_color_support() -> bool is
-    let ov: string = str::to_upper(env::get("NIDUS_COLOR"))
+    let ov: string = nstr::to_upper(env::get("NIDUS_COLOR"))
     if ov == "ALWAYS" || ov == "1" || ov == "TRUE" || ov == "ON"  is return true end
     if ov == "NEVER"  || ov == "0" || ov == "FALSE" || ov == "OFF" is return false end
     if env::get("NO_COLOR") != "" is return false end
@@ -80,13 +80,64 @@ pub fn auto_style() -> Style is
     return Style::Ascii
 end
 
+pub fn env_has(name: string, needle: string) -> bool is
+    return nstr::to_lower(env::get(name)).contains(needle)
+end
+
+;; Poziom kolorów terminala (0.4.0):
+;;   0 brak · 1 = 16 kolorów ANSI · 2 = 256 kolorów · 3 = truecolor (24-bit)
+;; Kolejność decyzji:
+;;  1. detect_color_support() == false      -> 0
+;;  2. NIDUS_COLOR_LEVEL=1|2|3              -> jawne nadpisanie
+;;  3. COLORTERM=truecolor|24bit, znane terminale (iTerm, VS Code, WezTerm,
+;;     kitty, Alacritty, Windows Terminal, ghostty...) -> 3
+;;  4. TERM zawiera "256"                   -> 2
+;;  5. w pozostałych przypadkach            -> 1
+pub fn detect_color_level() -> int is
+    if !detect_color_support() is return 0 end
+
+    let forced: string = env::get("NIDUS_COLOR_LEVEL")
+    if forced == "1" is return 1 end
+    if forced == "2" is return 2 end
+    if forced == "3" is return 3 end
+
+    if env_has("COLORTERM", "truecolor") || env_has("COLORTERM", "24bit") is return 3 end
+    let prog: string = env::get("TERM_PROGRAM")
+    if prog == "iTerm.app" || prog == "vscode" || prog == "WezTerm" || prog == "ghostty" || prog == "Hyper" is return 3 end
+    if env::get("WT_SESSION") != "" || env::get("KITTY_WINDOW_ID") != "" is return 3 end
+    if env_has("TERM", "truecolor") || env_has("TERM", "24bit") || env_has("TERM", "direct") is return 3 end
+    if env_has("TERM", "kitty") || env_has("TERM", "alacritty") || env_has("TERM", "wezterm") || env_has("TERM", "ghostty") is return 3 end
+    if env_has("TERM", "256") is return 2 end
+    return 1
+end
+
+;; Jak detect_color_level(), ale nigdy 0 — dla trybów "zawsze kolorowo".
+pub fn detect_color_level_forced() -> int is
+    let l: int = detect_color_level()
+    if l < 1 is return 1 end
+    return l
+end
+
+;; Motyw dobrany do środowiska:
+;;  - bez kolorów                     -> mono (unikod lub ASCII)
+;;  - NIDUS_THEME=<nazwa>             -> wskazany motyw (dark, light, vivid, nord,
+;;                                       dracula, retro, 256, polski, ascii, mono...)
+;;  - w przeciwnym razie              -> najładniejszy dla poziomu kolorów
+;;                                       (truecolor -> vivid, 256 -> 256, 16 -> dark)
 pub fn auto_theme() -> nidus_theme::Theme is
-    if !detect_color_support() is
-        if detect_unicode_support() is return nidus_theme::theme_mono_unicode() end
+    let level: int = detect_color_level()
+    let unicode: bool = detect_unicode_support()
+    if level == 0 is
+        if unicode is return nidus_theme::theme_mono_unicode() end
         return nidus_theme::theme_mono()
     end
-    if detect_unicode_support() is return nidus_theme::theme_dark() end
-    return nidus_theme::theme_ascii()
+    let want: string = nstr::to_lower(env::get("NIDUS_THEME"))
+    if nidus_theme::theme_known(want) is
+        let mut t: nidus_theme::Theme = nidus_theme::theme_by_name(want)
+        if !unicode is t.charset = nidus_theme::charset_ascii() end
+        return t
+    end
+    return nidus_theme::theme_for_level(level, unicode)
 end
 
 pub struct Config is
@@ -103,12 +154,14 @@ pub fn config_with(style: Style, theme: nidus_theme::Theme) -> Config is
 end
 
 ;; Zawsze kolorowo: pełny widok graficzny z kolorami niezależnie od autodetekcji
-;; (unikod, jeśli terminal go deklaruje; w przeciwnym razie ASCII).
+;; (unikod, jeśli terminal go deklaruje; w przeciwnym razie ASCII). Paleta
+;; dobrana do poziomu kolorów terminala (co najmniej 16 kolorów).
 pub fn config_colored() -> Config is
+    let level: int = detect_color_level_forced()
     if detect_unicode_support() is
-        return Config { style: Style::Graphical, theme: nidus_theme::theme_dark() }
+        return Config { style: Style::Graphical, theme: nidus_theme::theme_for_level(level, true) }
     end
-    return Config { style: Style::Ascii, theme: nidus_theme::theme_ascii() }
+    return Config { style: Style::Ascii, theme: nidus_theme::theme_for_level(level, false) }
 end
 
 impl Config is
